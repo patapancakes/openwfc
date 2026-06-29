@@ -1,9 +1,8 @@
 package database
 
 import (
+	"database/sql"
 	"wwfc/common"
-
-	"github.com/jackc/pgx/v4"
 )
 
 type MarioKartWiiTopTenRanking struct {
@@ -16,47 +15,47 @@ const (
 	getTopTenRankingsQuery = "" +
 		"SELECT score, pid, playerinfo " +
 		"FROM mario_kart_wii_sake " +
-		"WHERE ($1 = 0 OR regionid = $1) " +
-		"AND courseid = $2 " +
+		"WHERE (? = 0 OR regionid = ?) " +
+		"AND courseid = ? " +
 		"ORDER BY score ASC " +
 		"LIMIT 10"
 	getGhostDataQuery = "" +
 		"SELECT id " +
 		"FROM mario_kart_wii_sake " +
-		"WHERE courseid = $1 " +
-		"AND score < $2 " +
+		"WHERE courseid = ? " +
+		"AND score < ? " +
 		"ORDER BY score DESC " +
 		"LIMIT 1"
 	getStoredGhostDataQuery = "" +
 		"SELECT pid, id " +
 		"FROM mario_kart_wii_sake " +
-		"WHERE ($1 = 0 OR regionid = $1) " +
-		"AND courseid = $2 " +
+		"WHERE (? = 0 OR regionid = ?) " +
+		"AND courseid = ? " +
 		"ORDER BY score ASC " +
 		"LIMIT 1"
 	getFileQuery = "" +
 		"SELECT ghost " +
 		"FROM mario_kart_wii_sake " +
-		"WHERE id = $1 " +
+		"WHERE id = ? " +
 		"LIMIT 1"
 	getGhostFileQuery = "" +
 		"SELECT ghost " +
 		"FROM mario_kart_wii_sake " +
-		"WHERE courseid = $1 " +
-		"AND score < $2 " +
-		"AND pid <> $3 " +
+		"WHERE courseid = ? " +
+		"AND score < ? " +
+		"AND pid <> ? " +
 		"ORDER BY score DESC " +
 		"LIMIT 1"
 	insertGhostFileStatement = "" +
 		"INSERT INTO mario_kart_wii_sake (regionid, courseid, score, pid, playerinfo, ghost, upload_time) " +
-		"VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP) " +
-		"ON CONFLICT (courseid, pid) DO UPDATE " +
-		"SET regionid = EXCLUDED.regionid, score = EXCLUDED.score, playerinfo = EXCLUDED.playerinfo, ghost = EXCLUDED.ghost, upload_time = CURRENT_TIMESTAMP"
+		"VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
+		"ON DUPLICATE KEY UPDATE " +
+		"regionid = VALUES(regionid), score = VALUES(score), playerinfo = VALUES(playerinfo), ghost = VALUES(ghost), upload_time = CURRENT_TIMESTAMP"
 )
 
 func (c *Connection) GetMarioKartWiiTopTenRankings(regionId common.MarioKartWiiLeaderboardRegionId,
 	courseId common.MarioKartWiiCourseId) ([]MarioKartWiiTopTenRanking, error) {
-	rows, err := c.pool.Query(c.ctx, getTopTenRankingsQuery, regionId, courseId)
+	rows, err := c.pool.QueryContext(c.ctx, getTopTenRankingsQuery, regionId, regionId, courseId)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +79,7 @@ func (c *Connection) GetMarioKartWiiTopTenRankings(regionId common.MarioKartWiiL
 }
 
 func (c *Connection) GetMarioKartWiiGhostData(courseId common.MarioKartWiiCourseId, time int) (int, error) {
-	row := c.pool.QueryRow(c.ctx, getGhostDataQuery, courseId, time)
+	row := c.pool.QueryRowContext(c.ctx, getGhostDataQuery, courseId, time)
 
 	var fileId int
 	if err := row.Scan(&fileId); err != nil {
@@ -92,7 +91,7 @@ func (c *Connection) GetMarioKartWiiGhostData(courseId common.MarioKartWiiCourse
 
 func (c *Connection) GetMarioKartWiiStoredGhostData(regionId common.MarioKartWiiLeaderboardRegionId,
 	courseId common.MarioKartWiiCourseId) (int, int, error) {
-	row := c.pool.QueryRow(c.ctx, getStoredGhostDataQuery, regionId, courseId)
+	row := c.pool.QueryRowContext(c.ctx, getStoredGhostDataQuery, regionId, regionId, courseId)
 
 	var pid int
 	var fileId int
@@ -104,7 +103,7 @@ func (c *Connection) GetMarioKartWiiStoredGhostData(regionId common.MarioKartWii
 }
 
 func (c *Connection) GetMarioKartWiiFile(fileId int) ([]byte, error) {
-	row := c.pool.QueryRow(c.ctx, getFileQuery, fileId)
+	row := c.pool.QueryRowContext(c.ctx, getFileQuery, fileId)
 
 	var file []byte
 	if err := row.Scan(&file); err != nil {
@@ -115,7 +114,7 @@ func (c *Connection) GetMarioKartWiiFile(fileId int) ([]byte, error) {
 }
 
 func (c *Connection) GetMarioKartWiiGhostFile(courseId common.MarioKartWiiCourseId, time int, pid int) ([]byte, error) {
-	row := c.pool.QueryRow(c.ctx, getGhostFileQuery, courseId, time, pid)
+	row := c.pool.QueryRowContext(c.ctx, getGhostFileQuery, courseId, time, pid)
 
 	var ghost []byte
 	if err := row.Scan(&ghost); err != nil {
@@ -127,7 +126,7 @@ func (c *Connection) GetMarioKartWiiGhostFile(courseId common.MarioKartWiiCourse
 
 func (c *Connection) InsertMarioKartWiiGhostFile(regionId common.MarioKartWiiLeaderboardRegionId,
 	courseId common.MarioKartWiiCourseId, score int, pid int, playerInfo string, ghost []byte) error {
-	_, err := c.pool.Exec(c.ctx, insertGhostFileStatement, regionId, courseId, score, pid, playerInfo, ghost)
+	_, err := c.pool.ExecContext(c.ctx, insertGhostFileStatement, regionId, courseId, score, pid, playerInfo, ghost)
 
 	return err
 }
@@ -150,7 +149,7 @@ func (c *Connection) GetMKWFriendInfo(profileId uint32) string {
 
 func (c *Connection) UpdateMKWFriendInfo(profileId uint32, info string) {
 	records, err := c.GetSakeRecords(1687, []int32{int32(profileId)}, "FriendInfo", nil, []string{"info"}, "")
-	if err == pgx.ErrNoRows || (err == nil && len(records) == 0) {
+	if err == sql.ErrNoRows || (err == nil && len(records) == 0) {
 		// No existing record, insert new one
 		record := SakeRecord{
 			GameId:  1687,

@@ -5,17 +5,15 @@ import (
 	"strconv"
 	"strings"
 	"wwfc/filter"
-
-	"github.com/jackc/pgconn"
 )
 
 type expression struct {
 	ast   *filter.TreeNode
 	query string
-	conn  *pgconn.PgConn
+	args  []any
 }
 
-func createSqlFilter(conn *pgconn.PgConn, basenode *filter.TreeNode) (value string, err error) {
+func createSqlFilter(basenode *filter.TreeNode) (value string, args []any, err error) {
 	defer func() {
 		if str := recover(); str != nil {
 			value = ""
@@ -23,9 +21,9 @@ func createSqlFilter(conn *pgconn.PgConn, basenode *filter.TreeNode) (value stri
 		}
 	}()
 
-	e := &expression{basenode, "", conn}
+	e := &expression{basenode, "", []any{}}
 	e.filterAppendRoot(basenode)
-	return "(" + e.query + ")", nil
+	return "(" + e.query + ")", args, nil
 }
 
 func (e *expression) filterAppendRoot(basenode *filter.TreeNode) {
@@ -109,7 +107,7 @@ func (e *expression) filterAppendNode(node *filter.TreeNode) {
 		}
 		panic("unexpected grouping type '" + v.GroupType + "': " + node.String())
 	case *filter.TextToken:
-		e.query += "(" + e.filterPushArg(v.Text) + ")::varchar"
+		e.query += "(" + e.filterPushArg(v.Text) + ")"
 
 	default:
 		panic("unexpected value: " + node.String())
@@ -161,9 +159,9 @@ func (e *expression) filterAppendMathOperator(operator string, args []*filter.Tr
 	}
 	e.query += "( ("
 	e.filterAppendNode(args[0])
-	e.query += ")::bigint " + operator + " ("
+	e.query += ") " + operator + " ("
 	e.filterAppendNode(args[1])
-	e.query += ")::bigint )"
+	e.query += ") )"
 }
 
 func (e *expression) filterAppendFuncSubstring(token *filter.FuncToken) {
@@ -175,9 +173,9 @@ func (e *expression) filterAppendFuncSubstring(token *filter.FuncToken) {
 	e.filterAppendRoot(token.Arguments[0])
 	e.query += ", ("
 	e.filterAppendRoot(token.Arguments[1])
-	e.query += ")::bigint, ("
+	e.query += "), ("
 	e.filterAppendRoot(token.Arguments[2])
-	e.query += ")::bigint )"
+	e.query += ") )"
 }
 
 // Get a value from the record
@@ -199,18 +197,10 @@ func (e *expression) filterAppendQueryValue(token *filter.IdentityToken) {
 		return
 	}
 
-	e.query += "COALESCE(fields->" + e.filterPushArg(token.Name) + "->>'value', '0')"
+	e.query += "COALESCE(JSON_VALUE(fields, CONCAT('$.', " + e.filterPushArg(token.Name) + ", '.value')), '0')"
 }
 
 func (e *expression) filterPushArg(arg string) string {
-	// This is scary!!!
-	if e.conn == nil {
-		return `'` + strings.ReplaceAll(arg, "'", "''") + `'`
-	}
-
-	str, err := e.conn.EscapeString(arg)
-	if err != nil {
-		panic(err)
-	}
-	return `'` + str + `'`
+	e.args = append(e.args, arg)
+	return "?"
 }

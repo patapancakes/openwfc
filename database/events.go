@@ -1,6 +1,7 @@
 package database
 
 import (
+	"encoding/json"
 	"wwfc/common"
 	"wwfc/logging"
 )
@@ -8,13 +9,17 @@ import (
 const (
 	insertEventQuery = `
 		INSERT INTO events (event_type, event_data) 
-		VALUES ($1, $2) 
+		VALUES (?, ?) 
 		RETURNING id`
 )
 
 func (c *Connection) InsertEvent(eventType string, eventData map[string]any) (int, error) {
+	data, err := json.Marshal(eventData)
+	if err != nil {
+		return 0, err
+	}
 	var eventId int
-	err := c.pool.QueryRow(c.ctx, insertEventQuery, eventType, eventData).Scan(&eventId)
+	err = c.pool.QueryRowContext(c.ctx, insertEventQuery, eventType, data).Scan(&eventId)
 	if err != nil {
 		return 0, err
 	}

@@ -3,12 +3,11 @@ package database
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"wwfc/common"
 	"wwfc/filter"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v4/pgxpool"
+	mysqlerrnum "github.com/bombsimon/mysql-error-numbers/v3"
 )
 
 const (
@@ -43,37 +42,35 @@ const (
 	getSakeRecordsQuery = `
 		SELECT owner_id, record_id, fields 
 		FROM sake_records 
-		WHERE game_id = $1 
-		  AND table_id = $2 
-		  AND (cardinality($4::integer[]) = 0 OR record_id = ANY($4::integer[])) 
-		  AND (cardinality($3::integer[]) = 0 OR owner_id = ANY($3::integer[]))`
+		WHERE game_id = ? 
+		  AND table_id = ?`
 
 	updateSakeRecordQuery = `
         UPDATE sake_records 
         SET 
-            fields = CASE WHEN owner_id = $4 THEN fields || $5 ELSE fields END, 
-            update_time = CASE WHEN owner_id = $4 THEN CURRENT_TIMESTAMP ELSE update_time END 
-        WHERE game_id = $1 
-          AND table_id = $2 
-          AND record_id = $3 
+            fields = CASE WHEN owner_id = ? THEN CONCAT(fields, ?) ELSE fields END, 
+            update_time = CASE WHEN owner_id = ? THEN CURRENT_TIMESTAMP ELSE update_time END 
+        WHERE game_id = ? 
+          AND table_id = ? 
+          AND record_id = ? 
         RETURNING owner_id`
 
 	insertSakeRecordQuery = `
 		INSERT INTO sake_records (game_id, table_id, owner_id, fields) 
-		VALUES ($1, $2, $3, $4)
+		VALUES (?, ?, ?, ?)
 		RETURNING record_id`
 
 	deleteSakeRecordQuery = `
 		DELETE FROM sake_records 
-		WHERE game_id = $1 
-		  AND table_id = $2 
-		  AND record_id = $3 
-		  AND owner_id = $4`
+		WHERE game_id = ? 
+		  AND table_id = ? 
+		  AND record_id = ? 
+		  AND owner_id = ?`
 
 	checkMaxSakeRecordsQuery = `
 		SELECT COUNT(*) 
 		FROM sake_records 
-		WHERE owner_id = $1`
+		WHERE owner_id = ?`
 )
 
 var (
@@ -106,17 +103,26 @@ func (c *Connection) GetSakeRecords(gameId int, ownerIds []int32, tableId string
 	}
 
 	query := getSakeRecordsQuery
+	args := []any{gameId, tableId}
+	if len(recordIds) > 0 {
+		query += " AND record_id IN (?" + strings.Repeat(", ?", len(recordIds)-1) + ")"
+		for _, id := range recordIds {
+			args = append(args, id)
+		}
+	}
+	if len(ownerIds) > 0 {
+		query += " AND owner_id IN (?" + strings.Repeat(", ?", len(ownerIds)-1) + ")"
+		for _, id := range ownerIds {
+			args = append(args, id)
+		}
+	}
 	if filterExpr != "" {
 		tree, err := filter.Parse(filterExpr)
 		if err != nil {
 			return nil, err
 		}
 
-		var filterQuery string
-		err = c.pool.AcquireFunc(c.ctx, func(conn *pgxpool.Conn) error {
-			filterQuery, err = createSqlFilter(conn.Conn().PgConn(), tree)
-			return err
-		})
+		filterQuery, filterArgs, err := createSqlFilter(tree)
 		if err != nil {
 			return nil, err
 		}
@@ -124,9 +130,10 @@ func (c *Connection) GetSakeRecords(gameId int, ownerIds []int32, tableId string
 		// This filter has been entirely rewritten by our filter code,
 		// based on the expression supplied by the user. This should be safe!!!
 		query += " AND (" + filterQuery + ")"
+		args = append(args, filterArgs...)
 	}
 
-	rows, err := c.pool.Query(c.ctx, query, gameId, tableId, ownerIds, recordIds)
+	rows, err := c.pool.QueryContext(c.ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -160,10 +167,9 @@ func (c *Connection) UpdateSakeRecord(record SakeRecord, ownerId int32) error {
 		return err
 	}
 	var existingOwnerId int32
-	err = c.pool.QueryRow(c.ctx, updateSakeRecordQuery, record.GameId, record.TableId, record.RecordId, ownerId, fieldsJson).Scan(&existingOwnerId)
+	err = c.pool.QueryRowContext(c.ctx, updateSakeRecordQuery, ownerId, fieldsJson, ownerId, record.GameId, record.TableId, record.RecordId).Scan(&existingOwnerId)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.CheckViolation {
+		if mysqlerrnum.FromError(err) == mysqlerrnum.ErrCheckConstraintViolated {
 			return ErrSakeFieldLimitExceeded
 		}
 		return err
@@ -182,15 +188,11 @@ func (c *Connection) InsertSakeRecord(record SakeRecord) (recordId int32, err er
 	}
 
 	for i := 0; i < 10; i++ {
-		err = c.pool.QueryRow(c.ctx, insertSakeRecordQuery, record.GameId, record.TableId, record.OwnerId, fieldsJson).Scan(&recordId)
+		err = c.pool.QueryRowContext(c.ctx, insertSakeRecordQuery, record.GameId, record.TableId, record.OwnerId, fieldsJson).Scan(&recordId)
 		if err == nil {
 			break
 		}
-		var pgErr *pgconn.PgError
-		if !errors.As(err, &pgErr) {
-			break
-		}
-		if pgErr.Code != pgerrcode.UniqueViolation {
+		if mysqlerrnum.FromError(err) != mysqlerrnum.ErrDupUnique {
 			break
 		}
 		// Retry if unique violation occurred, as the record ID is generated randomly
@@ -200,7 +202,7 @@ func (c *Connection) InsertSakeRecord(record SakeRecord) (recordId int32, err er
 
 func (c *Connection) IsMaxSakeRecordsReached(profileId uint32, maxRecords int) (bool, error) {
 	var count int
-	err := c.pool.QueryRow(c.ctx, checkMaxSakeRecordsQuery, profileId).Scan(&count)
+	err := c.pool.QueryRowContext(c.ctx, checkMaxSakeRecordsQuery, profileId).Scan(&count)
 	if err != nil {
 		return false, err
 	}

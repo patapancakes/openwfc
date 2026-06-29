@@ -2,14 +2,13 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"wwfc/common"
-
-	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type Connection struct {
-	pool *pgxpool.Pool
+	pool *sql.DB
 	ctx  context.Context
 }
 
@@ -18,13 +17,8 @@ func Start(config common.Config) Connection {
 		ctx: context.Background(),
 	}
 
-	dbString := fmt.Sprintf("postgres://%s:%s@%s/%s", config.Username, config.Password, config.DatabaseAddress, config.DatabaseName)
-	dbConf, err := pgxpool.ParseConfig(dbString)
-	if err != nil {
-		panic(err)
-	}
-
-	conn.pool, err = pgxpool.ConnectConfig(conn.ctx, dbConf)
+	var err error
+	conn.pool, err = sql.Open("mysql", fmt.Sprintf("%s:%s@%s/%s?parseTime=true", config.Username, config.Password, config.DatabaseAddress, config.DatabaseName))
 	if err != nil {
 		panic(err)
 	}

@@ -44,9 +44,7 @@ type Config struct {
 
 	APISecret string `xml:"apiSecret"`
 
-	AllowDefaultDolphinKeys     bool   `xml:"allowDefaultDolphinKeys"`
-	AllowMultipleDeviceIDs      string `xml:"allowMultipleDeviceIDs"`
-	AllowConnectWithoutDeviceID bool   `xml:"allowConnectWithoutDeviceID"`
+	AllowDefaultDolphinKeys bool `xml:"allowDefaultDolphinKeys"`
 
 	ServerName string `xml:"serverName,omitempty"`
 
@@ -78,8 +76,6 @@ func GetConfig() Config {
 	}
 
 	config.AllowDefaultDolphinKeys = true
-	config.AllowMultipleDeviceIDs = "never"
-	config.AllowConnectWithoutDeviceID = false
 	config.ServerName = "WiiLink"
 
 	err = xml.Unmarshal(data, &config)
@@ -136,12 +132,6 @@ func GetConfig() Config {
 
 	if config.BackendFrontendAddress == "" {
 		config.BackendFrontendAddress = config.FrontendAddress
-	}
-
-	if config.AllowMultipleDeviceIDs == "true" || config.AllowMultipleDeviceIDs == "yes" {
-		config.AllowMultipleDeviceIDs = "always"
-	} else if config.AllowMultipleDeviceIDs != "SameIPAddress" {
-		config.AllowMultipleDeviceIDs = "never"
 	}
 
 	configLoaded = true

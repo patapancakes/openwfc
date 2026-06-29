@@ -15,13 +15,13 @@ func testGenerateFilter(t *testing.T, expression string) {
 
 	fmt.Printf("tree: %s\n", tree.String())
 
-	query, err := createSqlFilter(nil, tree)
+	query, args, err := createSqlFilter(tree)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	fmt.Printf("query: %s\n", query)
+	fmt.Printf("query: %s\nargs: %s\n", query, args)
 }
 
 func TestSakeFilter(t *testing.T) {

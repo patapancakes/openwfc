@@ -495,8 +495,8 @@ func (g *GameSpySession) replyError(gpErr GPError) {
 	}
 
 	deviceId := g.User.RestrictedDeviceId
-	if deviceId == 0 && len(g.User.NgDeviceId) > 0 {
-		deviceId = g.User.NgDeviceId[0]
+	if deviceId == 0 {
+		deviceId = g.User.NgDeviceId
 	}
 
 	msg, wwfcErrorCode := gpErr.GetMessageTranslate(g.GameName, g.Region, g.Language, g.ConsoleFriendCode, deviceId)
