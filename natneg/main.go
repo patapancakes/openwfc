@@ -198,36 +198,34 @@ func handleConnection(conn net.PacketConn, addr net.Addr, buffer []byte) {
 
 	var session *NATNEGSession
 
-	if command != NNNatifyRequest && command != NNAddressCheckRequest {
-		mutex.Lock()
-		var exists bool
-		session, exists = sessions[cookie]
-		if !exists {
-			logging.Info(moduleName, "Creating session")
-			session = &NATNEGSession{
-				Open:    true,
-				Version: version,
-				Cookie:  cookie,
-				mutex:   sync.RWMutex{},
-				Clients: map[byte]*NATNEGClient{},
-			}
-			sessions[cookie] = session
-
-			// Session has TTL of 30 seconds
-			time.AfterFunc(30*time.Second, func() {
-				closeSession(moduleName, session)
-			})
+	mutex.Lock()
+	var exists bool
+	session, exists = sessions[cookie]
+	if !exists {
+		logging.Info(moduleName, "Creating session")
+		session = &NATNEGSession{
+			Open:    true,
+			Version: version,
+			Cookie:  cookie,
+			mutex:   sync.RWMutex{},
+			Clients: map[byte]*NATNEGClient{},
 		}
-		mutex.Unlock()
+		sessions[cookie] = session
 
-		if session.Version != version {
-			logging.Error(moduleName, "Version mismatch")
-			return
-		}
-
-		session.mutex.Lock()
-		defer session.mutex.Unlock()
+		// Session has TTL of 30 seconds
+		time.AfterFunc(30*time.Second, func() {
+			closeSession(moduleName, session)
+		})
 	}
+	mutex.Unlock()
+
+	if session.Version != version {
+		logging.Error(moduleName, "Version mismatch")
+		return
+	}
+
+	session.mutex.Lock()
+	defer session.mutex.Unlock()
 
 	switch command {
 	default:
@@ -266,13 +264,15 @@ func handleConnection(conn net.PacketConn, addr net.Addr, buffer []byte) {
 		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_BACKUP_ACK"))
 
 	case NNAddressCheckRequest:
-		logging.Info(moduleName, "Command:", aurora.Yellow("NN_ADDRESS_CHECK"))
+		//logging.Info(moduleName, "Command:", aurora.Yellow("NN_ADDRESS_CHECK"))
+		session.handleAddressCheck(conn, addr, buffer[12:], moduleName, version)
 
 	case NNAddressCheckReply:
 		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_ADDRESS_REPLY"))
 
 	case NNNatifyRequest:
-		logging.Info(moduleName, "Command:", aurora.Yellow("NN_NATIFY_REQUEST"))
+		//logging.Info(moduleName, "Command:", aurora.Yellow("NN_NATIFY_REQUEST"))
+		session.handleNatify(conn, addr, buffer[12:], moduleName, version)
 
 	case NNReportRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("NN_REPORT"))

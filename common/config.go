@@ -16,6 +16,7 @@ type Config struct {
 
 	DefaultAddress       string  `xml:"address"`
 	GameSpyAddress       *string `xml:"gsAddress,omitempty"`
+	ProbeAddress         *string `xml:"probeAddress,omitempty"`
 	NASAddress           *string `xml:"nasAddress,omitempty"`
 	NASPort              string  `xml:"nasPort"`
 	NASAddressHTTPS      *string `xml:"nasAddressHttps,omitempty"`
@@ -85,6 +86,10 @@ func GetConfig() Config {
 
 	if config.GameSpyAddress == nil {
 		config.GameSpyAddress = &config.DefaultAddress
+	}
+
+	if config.ProbeAddress == nil {
+		config.ProbeAddress = &config.DefaultAddress
 	}
 
 	if config.NASAddress == nil {

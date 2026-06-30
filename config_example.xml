@@ -2,6 +2,9 @@
      <!-- The address the GameSpy services will bind to -->
      <gsAddress>127.0.0.1</gsAddress>
 
+     <!-- The address the GameSpy NATNEG probe will bind to -->
+     <probeAddress>127.0.0.1</probeAddress>
+
      <!-- The address the NAS HTTP server will bind to -->
      <nasAddress>127.0.0.1</nasAddress>
      <nasPort>80</nasPort>
