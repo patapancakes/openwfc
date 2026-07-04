@@ -224,18 +224,17 @@ func svcloc(moduleName string, fields map[string][]byte) map[string]string {
 		"statusdata": "Y",
 	}
 
-	authToken := "NDS/SVCLOC/TOKEN"
+	// TODO: use gamecd as gsbrcd so login works, make new login func maybe?
+	fields["gsbrcd"] = fields["gamecd"]
+
+	authToken := login(moduleName, fields)["token"]
 
 	switch string(fields["svc"]) {
 	default:
 		param["servicetoken"] = authToken
 		param["svchost"] = "n/a"
 
-	case "9000":
-		param["token"] = authToken
-		param["svchost"] = "dls1.nintendowifi.net"
-
-	case "9001":
+	case "9000", "9001":
 		param["servicetoken"] = authToken
 		param["svchost"] = "dls1.nintendowifi.net"
 	}

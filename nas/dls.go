@@ -34,6 +34,21 @@ func handleDownloadEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	authToken := string(fields["token"])
+	if authToken == "" {
+		logging.Error(moduleName, "Missing or invalid token")
+		replyHTTPError(w, 400, "400 Bad Request")
+		return
+	}
+
+	authTokenObj := common.NASAuthToken{}
+	err = authTokenObj.Unmarshal(string(authToken))
+	if err != nil {
+		logging.Error(moduleName, "Failed to unmarshal auth token:", err)
+		replyHTTPError(w, 400, "400 Bad Request")
+		return
+	}
+
 	action := string(fields["action"])
 	if action == "" {
 		logging.Error(moduleName, "No action in form")
