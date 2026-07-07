@@ -8,33 +8,31 @@ import (
 )
 
 type LoginInfo struct {
-	ProfileID           uint32
-	GameCode            string
-	InGameName          string
-	ConsoleFriendCode   uint64
-	FriendKeyGame       string
-	GPPublicIP          string
-	DeviceAuthenticated bool
-	Restricted          bool
-	session             *Session
+	ProfileID         uint32
+	GameCode          string
+	InGameName        string
+	ConsoleFriendCode uint64
+	FriendKeyGame     string
+	GPPublicIP        string
+	Restricted        bool
+	session           *Session
 }
 
 var logins = map[uint32]*LoginInfo{}
 
-func Login(profileID uint32, gameCode string, inGameName string, consoleFriendCode uint64, fcGame string, publicIP string, deviceAuthenticated bool, restricted bool) {
+func Login(profileID uint32, gameCode string, inGameName string, consoleFriendCode uint64, fcGame string, publicIP string, restricted bool) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
 	logins[profileID] = &LoginInfo{
-		ProfileID:           profileID,
-		GameCode:            gameCode,
-		InGameName:          inGameName,
-		ConsoleFriendCode:   consoleFriendCode,
-		FriendKeyGame:       fcGame,
-		GPPublicIP:          publicIP,
-		DeviceAuthenticated: deviceAuthenticated,
-		Restricted:          restricted,
-		session:             nil,
+		ProfileID:         profileID,
+		GameCode:          gameCode,
+		InGameName:        inGameName,
+		ConsoleFriendCode: consoleFriendCode,
+		FriendKeyGame:     fcGame,
+		GPPublicIP:        publicIP,
+		Restricted:        restricted,
+		session:           nil,
 	}
 }
 

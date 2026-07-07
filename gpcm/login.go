@@ -184,14 +184,13 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 	g.LoginTicket = common.GPCMLoginTicket{ProfileID: g.Profile.ID}.Marshal()
 	g.SessionKey = rand.Int31n(290000000) + 10000000
 
-	g.DeviceAuthenticated = true
 	g.LoggedIn = true
 
 	g.ModuleName = "GPCM:" + strconv.FormatInt(int64(g.Profile.ID), 10)
 	g.ModuleName += "/" + common.CalcFriendCodeString(g.Profile.ID, g.Profile.GsbrCode[:4])
 
 	// Notify QR2 of the login
-	qr2.Login(g.Profile.ID, g.GameCode, g.InGameName, g.ConsoleFriendCode, g.Profile.GsbrCode[:4], g.RemoteAddr, g.DeviceAuthenticated, g.Profile.Restricted)
+	qr2.Login(g.Profile.ID, g.GameCode, g.InGameName, g.ConsoleFriendCode, g.Profile.GsbrCode[:4], g.RemoteAddr, g.Profile.Restricted)
 
 	replyUserId := g.Profile.UserID
 	if g.UnitCode == UnitCodeDS {

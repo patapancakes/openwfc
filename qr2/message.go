@@ -56,12 +56,6 @@ func SendClientMessage(senderIP string, destSearchID uint64, message []byte) {
 	}
 	mutex.Unlock()
 
-	login := receiver.login
-	if login == nil || !login.DeviceAuthenticated {
-		logging.Error(moduleName, "Destination", aurora.Cyan(destSearchID), "is not device authenticated")
-		return
-	}
-
 	// Decode and validate the message
 	isNatnegPacket := false
 	if len(message) >= 2 && bytes.Equal(message[:2], []byte{0xfd, 0xfc}) {
@@ -108,12 +102,6 @@ func SendClientMessage(senderIP string, destSearchID uint64, message []byte) {
 
 		if !sender.setProfileID(moduleName, strconv.FormatUint(uint64(senderProfileID), 10), strings.Split(senderIP, ":")[0]) {
 			// Error already logged
-			return
-		}
-
-		login := sender.login
-		if login == nil || !login.DeviceAuthenticated {
-			logging.Error(moduleName, "Sender is not device authenticated")
 			return
 		}
 

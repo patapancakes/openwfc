@@ -55,34 +55,23 @@ func (g *GameSpySession) bestieMessage(command common.GameSpyCommand) {
 	var version int
 	var msgDataIndex int
 	var resvDenyMsg string
-	var resvWaitMsg string
 
 	if strings.HasPrefix(msg, "GPCM3vMAT") {
 		version = 3
 		resvDenyMsg = resvDenyVer3
-		resvWaitMsg = resvWaitVer3
 		msgDataIndex = 9
 	} else if strings.HasPrefix(msg, "GPCM11vMAT") {
 		// Only used for Brawl
 		version = 11
 		resvDenyMsg = resvDenyVer11
-		resvWaitMsg = resvWaitVer11
 		msgDataIndex = 10
 	} else if strings.HasPrefix(msg, "GPCM90vMAT") {
 		version = 90
 		resvDenyMsg = resvDenyVer90
-		resvWaitMsg = resvWaitVer90
 		msgDataIndex = 10
 	} else {
 		logging.Error(g.ModuleName, "Invalid message prefix; message:", msg)
 		g.replyError(ErrMessage)
-		return
-	}
-
-	if !g.DeviceAuthenticated {
-		logging.Notice(g.ModuleName, "Sender is not device authenticated yet")
-		// g.replyError(ErrMessage)
-		sendMessageToSessionBuffer("1", uint32(toProfileId), g, resvWaitMsg)
 		return
 	}
 
@@ -183,12 +172,6 @@ func (g *GameSpySession) bestieMessage(command common.GameSpyCommand) {
 	if toSession.GameName != g.GameName {
 		logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "is not playing the same game")
 		g.replyError(ErrMessage)
-		return
-	}
-
-	if !toSession.DeviceAuthenticated {
-		logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "is not device authenticated")
-		sendMessageToSessionBuffer("1", uint32(toProfileId), g, resvDenyMsg)
 		return
 	}
 

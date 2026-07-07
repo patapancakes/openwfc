@@ -16,16 +16,15 @@ import (
 const ServerName = "gpcm"
 
 type GameSpySession struct {
-	ConnIndex           uint64
-	RemoteAddr          string
-	Profile             database.Profile
-	ModuleName          string
-	LoggedIn            bool
-	DeviceAuthenticated bool
-	Challenge           string
-	AuthToken           string
-	LoginTicket         string
-	SessionKey          int32
+	ConnIndex   uint64
+	RemoteAddr  string
+	Profile     database.Profile
+	ModuleName  string
+	LoggedIn    bool
+	Challenge   string
+	AuthToken   string
+	LoginTicket string
+	SessionKey  int32
 
 	LoginInfoSet      bool
 	GameName          string

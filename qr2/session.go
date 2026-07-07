@@ -29,7 +29,6 @@ type Session struct {
 	Challenge       string
 	Authenticated   bool
 	login           *LoginInfo
-	ExploitReceived bool
 	LastKeepAlive   int64
 	Endianness      byte // Some fields depend on the client's endianness
 	Data            map[string]string
@@ -243,12 +242,6 @@ func (session *Session) setProfileID(moduleName string, newPID string, gpcmIP st
 	}
 
 	loginInfo.session = session
-
-	if loginInfo.DeviceAuthenticated {
-		session.Data["+deviceauth"] = "1"
-	} else {
-		session.Data["+deviceauth"] = "0"
-	}
 
 	session.Data["+gppublicip"], _ = common.IPFormatToString(gpPublicIP)
 	session.Data["+fcgameid"] = loginInfo.FriendKeyGame

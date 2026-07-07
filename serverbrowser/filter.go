@@ -30,10 +30,6 @@ func filterServers(moduleName string, servers []map[string]string, queryGame str
 			continue
 		}
 
-		if server["+deviceauth"] != "1" {
-			continue
-		}
-
 		if server["dwc_mver"] == "90" && (server["dwc_hoststate"] != "0" && server["dwc_hoststate"] != "2") {
 			continue
 		}
