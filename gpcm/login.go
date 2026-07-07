@@ -81,14 +81,10 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 
 	g.InGameName = common.UTF16Decode(authTokenObj.InGameScreenName[:], endianness)
 
-	if hostPlatform, exists := command.OtherValues["wl:host"]; exists {
-		g.HostPlatform = hostPlatform
+	if g.UnitCode == UnitCodeDS {
+		g.HostPlatform = "DS"
 	} else {
-		if g.UnitCode == UnitCodeDS {
-			g.HostPlatform = "DS"
-		} else {
-			g.HostPlatform = "Wii"
-		}
+		g.HostPlatform = "Wii"
 	}
 
 	g.LoginInfoSet = true
@@ -130,7 +126,6 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 				ErrorCode:   ErrLogin.ErrorCode,
 				ErrorString: "The provided profile ID is invalid.",
 				Fatal:       true,
-				WWFCMessage: WWFCMsgUnknownLoginError,
 			})
 			return
 		}
@@ -255,29 +250,24 @@ func (g *GameSpySession) performLoginWithDatabase(userId uint64, gsbrCode string
 				ErrorCode:   ErrLogin.ErrorCode,
 				ErrorString: "The profile ID is already in use.",
 				Fatal:       true,
-				WWFCMessage: WWFCMsgProfileIDInUse,
 			})
 		case database.ErrReservedProfileIDRange:
 			g.replyError(GPError{
 				ErrorCode:   ErrLogin.ErrorCode,
 				ErrorString: "The profile ID is in a reserved range.",
 				Fatal:       true,
-				WWFCMessage: WWFCMsgProfileIDInvalid,
 			})
 		case database.ErrProfileBannedTOS:
 			g.replyError(GPError{
 				ErrorCode:   ErrLogin.ErrorCode,
 				ErrorString: "The profile is banned from the service. Reason: " + profile.BanReason,
 				Fatal:       true,
-				WWFCMessage: WWFCMsgProfileBannedTOS,
-				Reason:      profile.BanReason,
 			})
 		default:
 			g.replyError(GPError{
 				ErrorCode:   ErrLogin.ErrorCode,
 				ErrorString: "There was an error logging in to the GP backend.",
 				Fatal:       true,
-				WWFCMessage: WWFCMsgUnknownLoginError,
 			})
 		}
 

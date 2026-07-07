@@ -58,7 +58,7 @@ func HandleBan(w http.ResponseWriter, r *http.Request) {
 
 	replyOK(w, nil)
 
-	gpcm.KickPlayerCustomMessage(req.ProfileID, req.Reason, gpcm.WWFCMsgProfileRestrictedCustom)
+	gpcm.KickPlayerCustomMessage(req.ProfileID, req.Reason)
 
 	logging.Event("profile_banned", map[string]any{
 		"profile_id":     req.ProfileID,

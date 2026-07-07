@@ -32,7 +32,7 @@ func HandleKick(w http.ResponseWriter, r *http.Request) {
 
 	replyOK(w, nil)
 
-	gpcm.KickPlayerCustomMessage(req.ProfileID, req.Reason, gpcm.WWFCMsgKickedCustom)
+	gpcm.KickPlayerCustomMessage(req.ProfileID, req.Reason)
 
 	logging.Event("profile_kicked", map[string]any{
 		"profile_id": req.ProfileID,
