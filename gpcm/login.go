@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf16"
 	"wwfc/common"
 	"wwfc/database"
 	"wwfc/logging"
@@ -387,16 +386,6 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 		"uniquenick": g.Profile.UniqueNick(),
 		"lt":         g.LoginTicket,
 		"id":         command.OtherValues["id"],
-	}
-
-	if g.GameName == "mariokartwii" {
-		if motd, err := GetMessageOfTheDay(); err != nil {
-			logging.Info(g.ModuleName, err)
-		} else {
-			motdUTF16 := utf16.Encode([]rune(motd))
-			motdByteArray := common.UTF16ToByteArray(motdUTF16)
-			otherValues["wl:motd"] = common.Base64DwcEncoding.EncodeToString(motdByteArray)
-		}
 	}
 
 	payload := common.CreateGameSpyMessage(common.GameSpyCommand{
