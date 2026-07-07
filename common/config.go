@@ -41,8 +41,6 @@ type Config struct {
 
 	APISecret string `xml:"apiSecret"`
 
-	AllowDefaultDolphinKeys bool `xml:"allowDefaultDolphinKeys"`
-
 	ServerName string `xml:"serverName,omitempty"`
 
 	EventReporting EventReportingConfig `xml:"eventReporting"`
@@ -72,7 +70,6 @@ func GetConfig() Config {
 		panic(err)
 	}
 
-	config.AllowDefaultDolphinKeys = true
 	config.ServerName = "WiiLink"
 
 	err = xml.Unmarshal(data, &config)

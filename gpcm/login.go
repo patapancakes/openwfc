@@ -2,10 +2,8 @@ package gpcm
 
 import (
 	"crypto/md5"
-	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -41,126 +39,6 @@ func generateResponse(gpcmChallenge, nasChallenge, authToken, clientChallenge st
 
 func generateProof(gpcmChallenge, nasChallenge, authToken, clientChallenge string) string {
 	return generateResponse(clientChallenge, nasChallenge, authToken, gpcmChallenge)
-}
-
-var msPublicKey = []byte{
-	0x00, 0xFD, 0x56, 0x04, 0x18, 0x2C, 0xF1, 0x75, 0x09, 0x21, 0x00, 0xC3, 0x08, 0xAE, 0x48, 0x39,
-	0x91, 0x1B, 0x6F, 0x9F, 0xA1, 0xD5, 0x3A, 0x95, 0xAF, 0x08, 0x33, 0x49, 0x47, 0x2B, 0x00, 0x01,
-	0x71, 0x31, 0x69, 0xB5, 0x91, 0xFF, 0xD3, 0x0C, 0xBF, 0x73, 0xDA, 0x76, 0x64, 0xBA, 0x8D, 0x0D,
-	0xF9, 0x5B, 0x4D, 0x11, 0x04, 0x44, 0x64, 0x35, 0xC0, 0xED, 0xA4, 0x2F,
-}
-
-var commonDeviceIds = []uint32{
-	0x02000001, // Internal use
-	0x0403ac68, // Dolphin default
-
-	// Publicly shared key dumps
-	0x02023f0a,
-	0x0204cef9, // From RR
-	0x038c864b,
-	0x040e3f97,
-	0x0411bbe5,
-	0x04cb7515,
-	0x066deb49,
-	0x06bcc32d,
-	0x06d0437a,
-	0x0812f46b,
-	0x089120c8,
-	0x0a305428, // From RR
-	0x0a447b97, // From RR
-	0x0a1e97cf, // From RR
-	0x0e19d5ed,
-	0x0e31482b,
-	0x2428a8cb,
-	0x247dd10b,
-}
-
-func verifySignature(moduleName string, authToken string, signature string) (defaultKey bool, result uint32) {
-	result = 0
-	defaultKey = false
-
-	sigBytes, err := common.Base64DwcEncoding.DecodeString(signature)
-	if err != nil || (len(sigBytes) != 0x144 && len(sigBytes) != 0x148) {
-		return
-	}
-
-	ngId := sigBytes[0x000:0x004]
-
-	if !allowDefaultDolphinKeys {
-		// Skip authentication signature verification for common device IDs (the caller should handle this)
-		for _, defaultDeviceId := range commonDeviceIds {
-			if binary.BigEndian.Uint32(ngId) == defaultDeviceId {
-				if !allowDefaultDolphinKeys {
-					logging.Warn(moduleName, "Using default NG device ID")
-				}
-				result = defaultDeviceId
-				defaultKey = true
-				return
-			}
-		}
-	}
-
-	ngTimestamp := sigBytes[0x004:0x008]
-	caId := sigBytes[0x008:0x00C]
-	msId := sigBytes[0x00C:0x010]
-	apId := sigBytes[0x010:0x018]
-	msSignature := sigBytes[0x018:0x054]
-	ngPublicKey := sigBytes[0x054:0x090]
-	ngSignature := sigBytes[0x090:0x0CC]
-	apPublicKey := sigBytes[0x0CC:0x108]
-	apSignature := sigBytes[0x108:0x144]
-	apTimestamp := []byte{0, 0, 0, 0}
-	if len(sigBytes) == 0x148 {
-		apTimestamp = sigBytes[0x144:0x148]
-	}
-
-	ngIssuer := fmt.Sprintf("Root-CA%02x%02x%02x%02x-MS%02x%02x%02x%02x", caId[0], caId[1], caId[2], caId[3], msId[0], msId[1], msId[2], msId[3])
-	ngName := fmt.Sprintf("NG%02x%02x%02x%02x", ngId[0], ngId[1], ngId[2], ngId[3])
-
-	ngCertBlob := []byte(ngIssuer)
-	ngCertBlob = append(ngCertBlob, make([]byte, 0x40-len(ngIssuer))...)
-	ngCertBlob = append(ngCertBlob, 0x00, 0x00, 0x00, 0x02)
-	ngCertBlob = append(ngCertBlob, []byte(ngName)...)
-	ngCertBlob = append(ngCertBlob, make([]byte, 0x40-len(ngName))...)
-	ngCertBlob = append(ngCertBlob, ngTimestamp...)
-	ngCertBlob = append(ngCertBlob, ngPublicKey...)
-	ngCertBlob = append(ngCertBlob, make([]byte, 0x3C)...)
-	ngCertBlobHash := sha1.Sum(ngCertBlob)
-
-	if !verifyECDSA(msPublicKey, msSignature, ngCertBlobHash[:]) {
-		logging.Error(moduleName, "NG cert verify failed")
-		return
-	}
-	logging.Info(moduleName, "NG cert verified")
-
-	apIssuer := ngIssuer + "-" + ngName
-	apName := fmt.Sprintf("AP%02x%02x%02x%02x%02x%02x%02x%02x", apId[0], apId[1], apId[2], apId[3], apId[4], apId[5], apId[6], apId[7])
-
-	apCertBlob := []byte(apIssuer)
-	apCertBlob = append(apCertBlob, make([]byte, 0x40-len(apIssuer))...)
-	apCertBlob = append(apCertBlob, 0x00, 0x00, 0x00, 0x02)
-	apCertBlob = append(apCertBlob, []byte(apName)...)
-	apCertBlob = append(apCertBlob, make([]byte, 0x40-len(apName))...)
-	apCertBlob = append(apCertBlob, apTimestamp...)
-	apCertBlob = append(apCertBlob, apPublicKey...)
-	apCertBlob = append(apCertBlob, make([]byte, 0x3C)...)
-	apCertBlobHash := sha1.Sum(apCertBlob)
-
-	if !verifyECDSA(ngPublicKey, ngSignature, apCertBlobHash[:]) {
-		logging.Error(moduleName, "AP cert verify failed")
-		return
-	}
-	logging.Info(moduleName, "AP cert verified")
-
-	authTokenHash := sha1.Sum([]byte(authToken))
-	if !verifyECDSA(apPublicKey, apSignature, authTokenHash[:]) {
-		logging.Error(moduleName, "Auth token signature failed")
-		return
-	}
-	logging.Notice(moduleName, "Auth token signature verified; NG ID:", aurora.Cyan(fmt.Sprintf("%08x", ngId)))
-
-	result = binary.BigEndian.Uint32(ngId)
-	return
 }
 
 func (g *GameSpySession) login(command common.GameSpyCommand) {
@@ -236,25 +114,6 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 		return
 	}
 
-	deviceAuth := false
-	defaultKey := false
-	switch g.UnitCode {
-	case UnitCodeDS:
-		deviceAuth = true
-
-	case UnitCodeWii:
-		defaultKey, deviceId = g.verifyExLoginInfo(command, authToken)
-		if deviceId == 0 {
-			return
-		}
-		deviceAuth = true
-
-	default:
-		logging.Error(g.ModuleName, "Invalid unit code specified:", aurora.Cyan(g.UnitCode))
-		g.replyError(ErrLogin)
-		return
-	}
-
 	nasChallenge := common.NullTerminatedString(authTokenObj.Challenge[:])
 
 	response := generateResponse(g.Challenge, nasChallenge, authToken, command.OtherValues["challenge"])
@@ -281,7 +140,7 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 		cmdProfileId = uint32(cmdProfileId2)
 	}
 
-	if !g.performLoginWithDatabase(authTokenObj.UserID, common.NullTerminatedString(authTokenObj.GsbrCode[:]), cmdProfileId, defaultKey, deviceId, deviceAuth) {
+	if !g.performLoginWithDatabase(authTokenObj.UserID, common.NullTerminatedString(authTokenObj.GsbrCode[:]), cmdProfileId, deviceId) {
 		return
 	}
 
@@ -332,7 +191,7 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 	g.LoginTicket = common.GPCMLoginTicket{ProfileID: g.Profile.ID}.Marshal()
 	g.SessionKey = rand.Int31n(290000000) + 10000000
 
-	g.DeviceAuthenticated = deviceAuth
+	g.DeviceAuthenticated = true
 	g.LoggedIn = true
 
 	g.ModuleName = "GPCM:" + strconv.FormatInt(int64(g.Profile.ID), 10)
@@ -379,70 +238,14 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 	)
 }
 
-func (g *GameSpySession) exLogin(command common.GameSpyCommand) {
-	if !g.LoggedIn {
-		logging.Warn(g.ModuleName, "Ignoring exlogin before login")
-		return
-	}
-
-	defaultKey, deviceId := g.verifyExLoginInfo(command, g.AuthToken)
-	if deviceId == 0 {
-		return
-	}
-
-	if !g.performLoginWithDatabase(g.Profile.UserID, g.Profile.GsbrCode, 0, defaultKey, deviceId, true) {
-		return
-	}
-
-	g.DeviceAuthenticated = true
-	qr2.SetDeviceAuthenticated(g.Profile.ID)
-}
-
-func (g *GameSpySession) verifyExLoginInfo(command common.GameSpyCommand, authToken string) (defaultKey bool, deviceId uint32) {
-	signature, signatureExists := command.OtherValues["wl:sig"]
-	defaultKey = false
-	deviceId = 0
-
-	if !signatureExists {
-		g.replyError(GPError{
-			ErrorCode:   ErrLogin.ErrorCode,
-			ErrorString: "Missing authentication signature.",
-			Fatal:       true,
-			WWFCMessage: WWFCMsgUnknownLoginError,
-		})
-		return
-	}
-
-	defaultKey, deviceId = verifySignature(g.ModuleName, authToken, signature)
-	if deviceId == 0 {
-		g.replyError(GPError{
-			ErrorCode:   ErrLogin.ErrorCode,
-			ErrorString: "The authentication signature is invalid.",
-			Fatal:       true,
-			WWFCMessage: WWFCMsgUnknownLoginError,
-		})
-		return
-	}
-
-	g.DeviceId = deviceId
-	logging.Event(
-		"device_authenticated",
-		map[string]any{
-			"profile_id":   g.Profile.ID,
-			"ng_device_id": g.DeviceId,
-		},
-	)
-	return
-}
-
-func (g *GameSpySession) performLoginWithDatabase(userId uint64, gsbrCode string, profileId uint32, defaultKey bool, deviceId uint32, deviceAuth bool) bool {
+func (g *GameSpySession) performLoginWithDatabase(userId uint64, gsbrCode string, profileId uint32, deviceId uint32) bool {
 	// Get IP address without port
 	ipAddress := g.RemoteAddr
 	if strings.Contains(ipAddress, ":") {
 		ipAddress = ipAddress[:strings.Index(ipAddress, ":")]
 	}
 
-	profile, err := db.LoginUserToGPCM(userId, gsbrCode, profileId, defaultKey, deviceId, ipAddress, g.InGameName, deviceAuth)
+	profile, err := db.LoginUserToGPCM(userId, gsbrCode, profileId, deviceId, ipAddress, g.InGameName)
 	g.Profile = profile
 
 	if err != nil {

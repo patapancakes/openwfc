@@ -48,9 +48,6 @@
      <wiiCertPath>nwc.pem</wiiCertPath>
      <wiiKeyPath>nwc-key.pem</wiiKeyPath>
 
-     <!-- Allow default Dolphin device keys to be used -->
-     <allowDefaultDolphinKeys>true</allowDefaultDolphinKeys>
-
      <!-- Database Credentials -->
      <username>username</username>
      <password>password</password>

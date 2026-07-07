@@ -97,7 +97,6 @@ CREATE TABLE IF NOT EXISTS `profiles` (
   `ban_moderator` tinytext DEFAULT NULL,
   `ban_tos` tinyint(1) DEFAULT NULL,
   `open_host` tinyint(1) DEFAULT 0,
-  `allow_default_keys` tinyint(1) DEFAULT 0,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1000000000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

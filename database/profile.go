@@ -17,7 +17,7 @@ const (
 	DoesProfileExist           = `SELECT EXISTS(SELECT 1 FROM profiles WHERE user_id = ? AND gsbrcd = ?)`
 	IsProfileIDInUse           = `SELECT EXISTS(SELECT 1 FROM profiles WHERE id = ?)`
 	DeleteProfileSession       = `DELETE FROM sessions WHERE id = ?`
-	GetUserProfileID           = `SELECT id, ng_device_id, firstname, lastname, open_host, last_ip_address, allow_default_keys FROM profiles WHERE user_id = ? AND gsbrcd = ?`
+	GetUserProfileID           = `SELECT id, ng_device_id, firstname, lastname, open_host, last_ip_address FROM profiles WHERE user_id = ? AND gsbrcd = ?`
 	UpdateProfileLastIPAddress = `UPDATE profiles SET last_ip_address = ?, last_ingamesn = ? WHERE id = ?`
 	UpdateProfileBan           = `UPDATE profiles SET has_ban = true, ban_issued = ?, ban_expires = ?, ban_reason = ?, ban_reason_hidden = ?, ban_moderator = ?, ban_tos = ? WHERE id = ?`
 	SearchProfileBan           = `SELECT has_ban, ban_tos, ng_device_id FROM profiles WHERE has_ban = true AND (id = ? OR ng_device_id = ? OR last_ip_address = ?) AND (ban_expires IS NULL OR ban_expires > ?) AND (ban_expires IS NULL OR ban_expires > ?) ORDER BY ban_tos DESC LIMIT 1`

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-	"wwfc/common"
 	"wwfc/logging"
 
 	"github.com/logrusorgru/aurora/v3"
@@ -17,7 +16,7 @@ var (
 	ErrProfileBannedTOS   = errors.New("profile is banned for violating the Terms of Service")
 )
 
-func (c *Connection) LoginUserToGPCM(userId uint64, gsbrcd string, profileId uint32, defaultKey bool, ngDeviceId uint32, ipAddress string, ingamesn string, deviceAuth bool) (Profile, error) {
+func (c *Connection) LoginUserToGPCM(userId uint64, gsbrcd string, profileId uint32, ngDeviceId uint32, ipAddress string, ingamesn string) (Profile, error) {
 	var exists bool
 	err := c.pool.QueryRowContext(c.ctx, DoesProfileExist, userId, gsbrcd).Scan(&exists)
 	if err != nil {
@@ -48,15 +47,10 @@ func (c *Connection) LoginUserToGPCM(userId uint64, gsbrcd string, profileId uin
 		var expectedNgId *uint32
 		var firstName *string
 		var lastName *string
-		var allowDefaultKeys bool
 
-		err := c.pool.QueryRowContext(c.ctx, GetUserProfileID, userId, gsbrcd).Scan(&profile.ID, &expectedNgId, &firstName, &lastName, &profile.OpenHost, &lastIPAddress, &allowDefaultKeys)
+		err := c.pool.QueryRowContext(c.ctx, GetUserProfileID, userId, gsbrcd).Scan(&profile.ID, &expectedNgId, &firstName, &lastName, &profile.OpenHost, &lastIPAddress)
 		if err != nil {
 			return Profile{}, err
-		}
-
-		if defaultKey && !allowDefaultKeys && !common.GetConfig().AllowDefaultDolphinKeys {
-			return Profile{}, ErrProhibitedDeviceID
 		}
 
 		if firstName != nil {
@@ -101,11 +95,9 @@ func (c *Connection) LoginUserToGPCM(userId uint64, gsbrcd string, profileId uin
 	}
 
 	// Update the user's last IP address and ingamesn
-	if deviceAuth {
-		_, err = c.pool.ExecContext(c.ctx, UpdateProfileLastIPAddress, ipAddress, ingamesn, profile.ID)
-		if err != nil {
-			return Profile{}, err
-		}
+	_, err = c.pool.ExecContext(c.ctx, UpdateProfileLastIPAddress, ipAddress, ingamesn, profile.ID)
+	if err != nil {
+		return Profile{}, err
 	}
 
 	emptyString := ""
@@ -153,9 +145,8 @@ func (c *Connection) LoginUserToGameStats(userId uint64, gsbrcd string) (Profile
 	var firstName *string
 	var lastName *string
 	var lastIPAddress *string
-	var allowDefaultKeys bool
 
-	err := c.pool.QueryRowContext(c.ctx, GetUserProfileID, userId, gsbrcd).Scan(&profile.ID, &profile.NgDeviceId, &firstName, &lastName, &profile.OpenHost, &lastIPAddress, &allowDefaultKeys)
+	err := c.pool.QueryRowContext(c.ctx, GetUserProfileID, userId, gsbrcd).Scan(&profile.ID, &profile.NgDeviceId, &firstName, &lastName, &profile.OpenHost, &lastIPAddress)
 	if err != nil {
 		return Profile{}, err
 	}

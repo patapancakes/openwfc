@@ -38,18 +38,6 @@ func Login(profileID uint32, gameCode string, inGameName string, consoleFriendCo
 	}
 }
 
-func SetDeviceAuthenticated(profileID uint32) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	if login, exists := logins[profileID]; exists {
-		login.DeviceAuthenticated = true
-		if login.session != nil {
-			login.session.Data["+deviceauth"] = "1"
-		}
-	}
-}
-
 func Logout(profileID uint32) {
 	mutex.Lock()
 	defer mutex.Unlock()

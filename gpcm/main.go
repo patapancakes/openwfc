@@ -61,8 +61,6 @@ var (
 	sessions            = map[uint32]*GameSpySession{}
 	sessionsByConnIndex = map[uint64]*GameSpySession{}
 	mutex               = deadlock.Mutex{}
-
-	allowDefaultDolphinKeys bool
 )
 
 func StartServer(reload bool) {
@@ -74,8 +72,6 @@ func StartServer(reload bool) {
 	// Start SQL
 	db = database.Start(config)
 	db.UpdateTables()
-
-	allowDefaultDolphinKeys = config.AllowDefaultDolphinKeys
 
 	if reload {
 		err := loadState()
@@ -243,7 +239,6 @@ func HandlePacket(index uint64, data []byte) {
 		_ = common.SendPacket(ServerName, session.ConnIndex, []byte(`\ka\\final\`))
 	})
 	commands = session.handleCommand("login", commands, session.login)
-	commands = session.handleCommand("wl:exlogin", commands, session.exLogin)
 	commands = session.ignoreCommand("logout", commands)
 
 	if len(commands) != 0 && !session.LoggedIn {
