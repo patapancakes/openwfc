@@ -11,6 +11,22 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
+const (
+	BuddyMessage = iota + 1
+	BuddyRequest
+	BuddyReply
+	BuddyAuth
+	BuddyUTM
+	BuddyRevoke
+)
+
+const (
+	BuddyStatus = iota + 100
+	BuddyInvite
+	BuddyPing
+	BuddyPong
+)
+
 func removeFromUint32Array(arrayPointer *[]uint32, index int) {
 	array := *arrayPointer
 	arrayLength := len(array)
@@ -125,17 +141,17 @@ func (g *GameSpySession) addFriend(command common.GameSpyCommand) {
 	}
 
 	// Send friend auth message
-	sendMessageToSessionBuffer("4", newSession.Profile.ID, g, "")
+	sendMessageToSessionBuffer(BuddyAuth, newSession.Profile.ID, g, "")
 
 	if g.isBm1AuthMessageNeeded() {
-		sendMessageToSessionBuffer("1", newSession.Profile.ID, g, bm1AuthMessage)
+		sendMessageToSessionBuffer(BuddyMessage, newSession.Profile.ID, g, bm1AuthMessage)
 	}
 
 	if newSession.isFriendAdded(g.Profile.ID) {
-		sendMessageToSession("4", g.Profile.ID, newSession, "")
+		sendMessageToSession(BuddyAuth, g.Profile.ID, newSession, "")
 
 		if newSession.isBm1AuthMessageNeeded() {
-			sendMessageToSession("1", g.Profile.ID, newSession, bm1AuthMessage)
+			sendMessageToSession(BuddyMessage, g.Profile.ID, newSession, bm1AuthMessage)
 		}
 
 		g.sendFriendStatus(newSession.Profile.ID)
@@ -171,7 +187,7 @@ func (g *GameSpySession) removeFriend(command common.GameSpyCommand) {
 	}
 
 	if session, ok := sessions[delProfileID32]; ok && session.LoggedIn && session.isFriendAuthorized(g.Profile.ID) {
-		sendMessageToSession("100", g.Profile.ID, session, logOutMessage)
+		sendMessageToSession(BuddyStatus, g.Profile.ID, session, logOutMessage)
 	}
 }
 
@@ -232,10 +248,10 @@ func (g *GameSpySession) setStatus(command common.GameSpyCommand) {
 	}
 }
 
-func sendMessageToSession(msgType string, from uint32, session *GameSpySession, msg string) {
+func sendMessageToSession(msgType int, from uint32, session *GameSpySession, msg string) {
 	message := common.CreateGameSpyMessage(common.GameSpyCommand{
 		Command:      "bm",
-		CommandValue: msgType,
+		CommandValue: strconv.Itoa(msgType),
 		OtherValues: map[string]string{
 			"f":   strconv.FormatUint(uint64(from), 10),
 			"msg": msg,
@@ -247,10 +263,10 @@ func sendMessageToSession(msgType string, from uint32, session *GameSpySession, 
 	}
 }
 
-func sendMessageToSessionBuffer(msgType string, from uint32, session *GameSpySession, msg string) {
+func sendMessageToSessionBuffer(msgType int, from uint32, session *GameSpySession, msg string) {
 	session.WriteBuffer += common.CreateGameSpyMessage(common.GameSpyCommand{
 		Command:      "bm",
-		CommandValue: msgType,
+		CommandValue: strconv.Itoa(msgType),
 		OtherValues: map[string]string{
 			"f":   strconv.FormatUint(uint64(from), 10),
 			"msg": msg,
@@ -258,7 +274,7 @@ func sendMessageToSessionBuffer(msgType string, from uint32, session *GameSpySes
 	})
 }
 
-func sendMessageToProfileId(msgType string, from uint32, to uint32, msg string) bool {
+func sendMessageToProfileId(msgType int, from uint32, to uint32, msg string) bool {
 	if session, ok := sessions[to]; ok && session.LoggedIn {
 		sendMessageToSession(msgType, from, session, msg)
 		return true
@@ -283,7 +299,7 @@ func (g *GameSpySession) sendFriendStatus(profileId uint32) {
 		}
 
 		session.recordStatusSent(g.Profile.ID)
-		sendMessageToSession("100", g.Profile.ID, session, g.Status)
+		sendMessageToSession(BuddyStatus, g.Profile.ID, session, g.Status)
 	}
 }
 
@@ -296,7 +312,7 @@ func (g *GameSpySession) exchangeFriendStatus(profileId uint32) {
 			}
 
 			session.recordStatusSent(g.Profile.ID)
-			sendMessageToSession("100", g.Profile.ID, session, g.Status)
+			sendMessageToSession(BuddyStatus, g.Profile.ID, session, g.Status)
 		}
 
 		if g.isFriendAdded(profileId) && g.isFriendAuthorized(profileId) {
@@ -306,7 +322,7 @@ func (g *GameSpySession) exchangeFriendStatus(profileId uint32) {
 			}
 
 			g.recordStatusSent(profileId)
-			sendMessageToSessionBuffer("100", profileId, g, session.Status)
+			sendMessageToSessionBuffer(BuddyStatus, profileId, g, session.Status)
 		}
 	}
 }
@@ -327,7 +343,7 @@ func (g *GameSpySession) sendLogoutStatus() {
 		if session, ok := sessions[storedPid]; ok && session.LoggedIn && session.isFriendAuthorized(g.Profile.ID) {
 			delProfileIDIndex := session.getAuthorizedFriendIndex(g.Profile.ID)
 			removeFromUint32Array(&session.AuthFriendList, delProfileIDIndex)
-			sendMessageToSession("100", g.Profile.ID, session, logOutMessage)
+			sendMessageToSession(BuddyStatus, g.Profile.ID, session, logOutMessage)
 		}
 	}
 }

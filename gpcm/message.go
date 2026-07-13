@@ -26,7 +26,7 @@ const (
 
 func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 	// TODO: There are other command values that mean the same thing
-	if command.CommandValue != "1" {
+	if command.CommandValue != strconv.Itoa(BuddyStatus) {
 		logging.Error(g.ModuleName, "Received unknown buddy message type:", aurora.Cyan(command.CommandValue))
 		return
 	}
@@ -166,7 +166,7 @@ func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 	if toSession, ok = sessions[uint32(toProfileId)]; !ok || !toSession.LoggedIn {
 		logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "is not online")
 		// g.replyError(ErrMessageFriendOffline)
-		sendMessageToSessionBuffer("1", uint32(toProfileId), g, resvDenyMsg)
+		sendMessageToSessionBuffer(BuddyMessage, uint32(toProfileId), g, resvDenyMsg)
 		return
 	}
 
@@ -246,14 +246,14 @@ func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 	// Check if this session is on the destination's RecvStatusFromList
 	if slices.Contains(toSession.RecvStatusFromList, g.Profile.ID) {
 		// The destination has already received a status message from the sender, so we can just send the message
-		sendMessageToSession("1", g.Profile.ID, toSession, newMsgStr)
+		sendMessageToSession(BuddyMessage, g.Profile.ID, toSession, newMsgStr)
 		return
 	}
 
 	// Send a dummy status message so the destination will accept a message from the sender
 	message := common.CreateGameSpyMessage(common.GameSpyCommand{
 		Command:      "bm",
-		CommandValue: "100",
+		CommandValue: strconv.Itoa(BuddyStatus),
 		OtherValues: map[string]string{
 			"f":   strconv.FormatUint(uint64(g.Profile.ID), 10),
 			"msg": "|s|0|ss||ls||ip|0|p|0|qm|0",
@@ -262,7 +262,7 @@ func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 
 	message += common.CreateGameSpyMessage(common.GameSpyCommand{
 		Command:      "bm",
-		CommandValue: "1",
+		CommandValue: strconv.Itoa(BuddyMessage),
 		OtherValues: map[string]string{
 			"f":   strconv.FormatUint(uint64(g.Profile.ID), 10),
 			"msg": newMsgStr,
