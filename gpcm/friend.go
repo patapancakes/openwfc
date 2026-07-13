@@ -188,7 +188,8 @@ func (g *GameSpySession) removeFriend(command common.GameSpyCommand) {
 	}
 
 	if session, ok := sessions[delProfileID32]; ok && session.LoggedIn && session.isFriendAuthorized(g.Profile.ID) {
-		sendMessageToSession(BuddyStatus, g.Profile.ID, session, logOutMessage)
+		sendMessageToSessionBuffer(BuddyStatus, g.Profile.ID, session, logOutMessage) // TODO: find out of this is needed
+		sendMessageToSessionBuffer(BuddyRevoke, g.Profile.ID, session, "")
 	}
 }
 
