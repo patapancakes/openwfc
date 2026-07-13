@@ -24,10 +24,10 @@ const (
 	resvWaitVer90 = "GPCM90vMAT\x04"
 )
 
-func (g *GameSpySession) bestieMessage(command common.GameSpyCommand) {
+func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 	// TODO: There are other command values that mean the same thing
 	if command.CommandValue != "1" {
-		logging.Error(g.ModuleName, "Received unknown bestie message type:", aurora.Cyan(command.CommandValue))
+		logging.Error(g.ModuleName, "Received unknown buddy message type:", aurora.Cyan(command.CommandValue))
 		return
 	}
 

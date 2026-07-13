@@ -248,7 +248,7 @@ func HandlePacket(index uint64, data []byte) {
 	commands = session.handleCommand("addbuddy", commands, session.addFriend)
 	commands = session.handleCommand("delbuddy", commands, session.removeFriend)
 	commands = session.handleCommand("authadd", commands, session.authAddFriend)
-	commands = session.handleCommand("bm", commands, session.bestieMessage)
+	commands = session.handleCommand("bm", commands, session.buddyMessage)
 	commands = session.handleCommand("getprofile", commands, session.getProfile)
 
 	for _, command := range commands {
