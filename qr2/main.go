@@ -218,32 +218,27 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 
 	case ClientMessageRequest:
 		logging.Info(moduleName, "Command:", aurora.Yellow("CLIENT_MESSAGE"))
-		return
 
 	case ClientMessageAckRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("CLIENT_MESSAGE_ACK"))
 
 		session.messageAckWaker.Assert()
-		return
 
 	case KeepAliveRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("KEEPALIVE"))
 		_, _ = conn.WriteTo(createResponseHeader(KeepAliveRequest, 0), &addr)
 
 		session.LastKeepAlive = time.Now().UTC().Unix()
-		return
 
 	case AvailableRequest:
 		logging.Info("QR2", "Command:", aurora.Yellow("AVAILABLE"))
 		_, _ = conn.WriteTo(createResponseHeader(AvailableRequest, 0), &addr)
-		return
 
 	case ClientRegisteredReply:
 		logging.Info(moduleName, "Command:", aurora.Yellow("CLIENT_REGISTERED"))
 
 	default:
 		logging.Error(moduleName, "Unknown command:", aurora.Yellow(buffer[0]))
-		return
 	}
 }
 
