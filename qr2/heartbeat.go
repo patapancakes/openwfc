@@ -31,11 +31,13 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 	}
 
 	if payload["dwc_mtype"] != "" {
-		logging.Info(moduleName, "Match type:", aurora.Cyan(payload["dwc_mtype"]))
+		mtype, _ := strconv.Atoi(payload["dwc_mtype"])
+		logging.Info(moduleName, "Match type:", aurora.Cyan(common.GetMatchTypeString(mtype)))
 	}
 
 	if payload["dwc_hoststate"] != "" {
-		logging.Info(moduleName, "Host state:", aurora.Cyan(payload["dwc_hoststate"]))
+		hoststate, _ := strconv.Atoi(payload["dwc_hoststate"])
+		logging.Info(moduleName, "Host state:", aurora.Cyan(common.GetMatchStateString(hoststate)))
 	}
 
 	realIP, realPort := common.IPFormatToString(addr.String())

@@ -711,7 +711,7 @@ func LogMatchCommand(moduleName string, dest string, command byte, data MatchCom
 	logging.Notice(moduleName, "Match", aurora.Yellow(GetMatchCommandString(command)), "to", aurora.BrightCyan(dest))
 
 	if command == MatchReservation && data.Reservation != nil {
-		logging.Info(moduleName, "Match type:", aurora.Cyan(fmt.Sprintf("0x%02X", data.Reservation.MatchType)))
+		logging.Info(moduleName, "Match type:", aurora.Cyan(GetMatchTypeString(int(data.Reservation.MatchType))))
 		logging.Info(moduleName, "Local player count:", aurora.Cyan(data.Reservation.LocalPlayerCount))
 	} else if command == MatchResvOK && data.ResvOK != nil {
 		logging.Info(moduleName, "Group ID:", aurora.Cyan(data.ResvOK.GroupID))

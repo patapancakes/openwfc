@@ -246,7 +246,7 @@ func (g *GameSpySession) setStatus(command common.GameSpyCommand) {
 		return
 	}
 
-	logging.Notice(g.ModuleName, "New status:", aurora.BrightMagenta(status))
+	logging.Notice(g.ModuleName, "New status:", aurora.BrightMagenta(common.GetStatusString(status)))
 
 	qr2.ProcessGPStatusUpdate(g.Profile.ID, g.QR2IP, status)
 
