@@ -7,10 +7,7 @@ import (
 )
 
 const (
-	insertEventQuery = `
-		INSERT INTO events (event_type, event_data) 
-		VALUES (?, ?) 
-		RETURNING id`
+	insertEventQuery = `INSERT INTO events (event_type, event_data) VALUES (?, ?) RETURNING id`
 )
 
 func (c *Connection) InsertEvent(eventType string, eventData map[string]any) (int, error) {
