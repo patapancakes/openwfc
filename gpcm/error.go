@@ -177,23 +177,14 @@ func (err GPError) GetMessage() string {
 
 func (g *GameSpySession) replyError(gpErr GPError) {
 	logging.Error(g.ModuleName, "Reply error:", gpErr.ErrorString)
-	if !g.LoginInfoSet {
-		msg := gpErr.GetMessage()
-		// logging.Info(g.ModuleName, "Sending error message:", msg)
-		err := common.SendPacket(ServerName, g.ConnIndex, []byte(msg))
-		if gpErr.Fatal || err != nil {
-			if err != nil {
-				logging.Error("GPCM", "Failed to send packet:", err)
-			}
-			common.ShouldNotError(common.CloseConnection(ServerName, g.ConnIndex))
+	err := common.SendPacket(ServerName, g.ConnIndex, []byte(gpErr.GetMessage()))
+	if gpErr.Fatal || err != nil {
+		if err != nil {
+			logging.Error("GPCM", "Failed to send packet:", err)
 		}
-		logging.Event("gpcm_returned_error", map[string]any{
-			"profile_id":   g.Profile.ID,
-			"error_code":   gpErr.ErrorCode,
-			"error_string": gpErr.ErrorString,
-			"fatal":        gpErr.Fatal,
-		})
-		return
+		if err := common.CloseConnection(ServerName, g.ConnIndex); err != nil {
+			logging.Error(g.ModuleName, "Failed to close connection:", err)
+		}
 	}
 
 	logging.Event("gpcm_returned_error", map[string]any{
