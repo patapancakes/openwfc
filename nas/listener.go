@@ -61,10 +61,6 @@ func listenAndServe() {
 	common.ShouldNotError(err)
 	listener := &httpListener{Listener: l}
 
-	/*defer func() {
-		common.ShouldNotError(listener.Close())
-	}()*/
-
 	err = server.Serve(listener)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
