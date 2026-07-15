@@ -2,7 +2,7 @@
 -- Host:                         127.0.0.1
 -- Server version:               11.8.6-MariaDB-0+deb13u1 from Debian - -- Please help get to 10k stars at https://github.com/MariaDB/Server
 -- Server OS:                    debian-linux-gnu
--- HeidiSQL Version:             12.18.0.7304
+-- HeidiSQL Version:             12.18.1.1
 -- --------------------------------------------------------
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS `events` (
 CREATE TABLE IF NOT EXISTS `friends` (
   `sender` int(10) unsigned NOT NULL,
   `recipient` int(10) unsigned NOT NULL,
+  `authorized` tinyint(1) unsigned NOT NULL DEFAULT 0,
   `created` timestamp NOT NULL DEFAULT utc_timestamp(),
   UNIQUE KEY `sender_recipient` (`sender`,`recipient`),
   KEY `FK_friends_profiles_2` (`recipient`),
@@ -85,9 +86,9 @@ CREATE TABLE IF NOT EXISTS `profiles` (
   `user_id` bigint(20) unsigned NOT NULL,
   `gsbrcd` char(11) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
   `firstname` tinytext CHARACTER SET ascii COLLATE ascii_general_ci DEFAULT NULL,
-  `lastname` tinytext CHARACTER SET ascii COLLATE ascii_general_ci DEFAULT '',
-  `last_ip_address` tinytext CHARACTER SET ascii COLLATE ascii_general_ci DEFAULT '',
-  `last_ingamesn` tinytext DEFAULT '',
+  `lastname` tinytext CHARACTER SET ascii COLLATE ascii_general_ci DEFAULT NULL,
+  `last_ingamesn` tinytext NOT NULL DEFAULT '',
+  `last_ip_address` tinytext CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL DEFAULT '',
   `has_ban` tinyint(1) DEFAULT 0,
   `ban_issued` timestamp NULL DEFAULT NULL,
   `ban_expires` timestamp NULL DEFAULT NULL,
