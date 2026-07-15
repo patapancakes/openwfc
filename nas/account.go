@@ -154,12 +154,6 @@ func login(moduleName string, fields map[string][]byte) map[string]string {
 		return param
 	}
 
-	if user.MacAddress != string(macadr) {
-		logging.Error(moduleName, "macadr does not match")
-		param["returncd"] = "103"
-		return param
-	}
-
 	gsbrcd, ok := fields["gsbrcd"]
 	if !ok {
 		logging.Error(moduleName, "No gsbrcd in form")
@@ -258,6 +252,12 @@ func login(moduleName string, fields map[string][]byte) map[string]string {
 		}
 		logging.Notice(moduleName, "Login (DS)", aurora.Cyan(token.UserID), aurora.Cyan(string(gsbrcd)), "devname:", aurora.Cyan(common.UTF16Decode(devname, endianness)), "name:", aurora.Cyan(ingamesnStr))
 	} else {
+		if user.MacAddress != string(macadr) {
+			logging.Error(moduleName, "macadr does not match")
+			param["returncd"] = "103"
+			return param
+		}
+
 		csnum, ok := fields["csnum"]
 		if !ok || len(csnum) != 11 {
 			logging.Error(moduleName, "Invalid csnum string in form")
