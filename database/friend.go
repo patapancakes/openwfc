@@ -7,14 +7,16 @@ import (
 
 const (
 	GetFriends = `
-		SELECT f.sender, COALESCE(r.created, f.created), r.created IS NOT NULL
+		SELECT f.sender, f.created, f.authorized
 		FROM friends AS f
 		LEFT JOIN friends AS r
 		ON r.sender = f.recipient
 		AND r.recipient = f.sender
 		WHERE f.recipient = ?`
-	AddFriend    = `INSERT INTO friends (sender, recipient) VALUES (?, ?)`
-	RemoveFriend = `DELETE FROM friends WHERE sender = ? AND recipient = ?`
+	GetFriendAuth = `SELECT authorized FROM friends WHERE sender = ? AND recipient = ?`
+	SetFriendAuth = `UPDATE friends SET authorized = ? WHERE sender = ? AND recipient = ?`
+	AddFriend     = `INSERT INTO friends (sender, recipient) VALUES (?, ?)`
+	RemoveFriend  = `DELETE FROM friends WHERE sender = ? AND recipient = ?`
 )
 
 type FriendInfo struct {
@@ -47,6 +49,25 @@ func (c *Connection) GetFriends(profileId uint32) ([]FriendInfo, error) {
 	}
 
 	return friends, nil
+}
+
+func (c *Connection) GetFriendAuth(sender uint32, recipient uint32) (bool, error) {
+	var authorized bool
+	err := c.pool.QueryRowContext(c.ctx, GetFriendAuth, sender, recipient).Scan(&authorized)
+	if err != nil {
+		return false, err
+	}
+
+	return authorized, nil
+}
+
+func (c *Connection) AuthFriend(sender uint32, recipient uint32) error {
+	_, err := c.pool.ExecContext(c.ctx, SetFriendAuth, true, sender, recipient)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *Connection) AddFriend(sender uint32, recipient uint32) error {

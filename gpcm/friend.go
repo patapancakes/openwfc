@@ -1,7 +1,6 @@
 package gpcm
 
 import (
-	"database/sql"
 	"strconv"
 	"strings"
 	"wwfc/common"
@@ -29,45 +28,12 @@ const (
 )
 
 func (g *GameSpySession) isFriendAuthorized(profileId uint32) bool {
-	friends, err := db.GetFriends(profileId)
-	if err != nil && err != sql.ErrNoRows {
+	authorized, err := db.GetFriendAuth(g.Profile.ID, profileId)
+	if err != nil {
 		return false
-	}
-
-	var authorized bool
-	for _, friend := range friends {
-		if friend.ID != g.Profile.ID {
-			continue
-		}
-
-		if !friend.Authorized {
-			continue
-		}
-
-		authorized = true
-		break
 	}
 
 	return authorized
-}
-
-func (g *GameSpySession) isFriendIncoming(profileId uint32) bool {
-	friends, err := db.GetFriends(g.Profile.ID)
-	if err != nil && err != sql.ErrNoRows {
-		return false
-	}
-
-	var incoming bool
-	for _, friend := range friends {
-		if friend.ID != profileId {
-			continue
-		}
-
-		incoming = true
-		break
-	}
-
-	return incoming
 }
 
 const (
@@ -124,42 +90,7 @@ func (g *GameSpySession) addFriend(command common.GameSpyCommand) {
 	defer mutex.Unlock()
 
 	recipient, ok := sessions[uint32(newProfileId)]
-	recipientOnline := ok && recipient != nil && recipient.LoggedIn
-
-	if recipientOnline && recipient.GameName != g.GameName {
-		// TODO: check this for offline recipients too
-		logging.Error(g.ModuleName, "Destination is not playing the same game")
-		g.replyError(ErrAddFriendBadNew)
-		return
-	}
-
-	// if both are friends now
-	if g.isFriendAuthorized(uint32(newProfileId)) {
-		if recipientOnline {
-			// notify recipient
-			g.exchangeFriendStatus(recipient.Profile.ID)
-
-			if recipient.isBm1AuthMessageNeeded() {
-				sendMessageToSession(BuddyMessage, g.Profile.ID, recipient, bm1AuthMessage)
-			}
-
-			sendMessageToSession(BuddyAuth, g.Profile.ID, recipient, "")
-		}
-
-		// notify sender
-		if !recipientOnline {
-			sendMessageToSession(BuddyStatus, uint32(newProfileId), g, offlineMessage)
-		}
-
-		if g.isBm1AuthMessageNeeded() {
-			sendMessageToSession(BuddyMessage, uint32(newProfileId), g, bm1AuthMessage)
-		}
-
-		sendMessageToSession(BuddyAuth, uint32(newProfileId), g, "")
-		return
-	}
-
-	if !recipientOnline {
+	if !ok || recipient == nil || !recipient.LoggedIn {
 		logging.Info(g.ModuleName, "Destination is not online")
 		return
 	}
@@ -210,19 +141,10 @@ func (g *GameSpySession) authAddFriend(command common.GameSpyCommand) {
 		return
 	}
 
-	if !g.isFriendIncoming(uint32(fromProfileId)) {
+	err = db.AuthFriend(uint32(fromProfileId), g.Profile.ID)
+	if err != nil {
 		logging.Error(g.ModuleName, "Sender", aurora.Cyan(fromProfileId), "is not an incoming friend")
 		g.replyError(ErrAuthAddBadFrom)
-		return
-	}
-
-	err = db.AddFriend(g.Profile.ID, uint32(fromProfileId))
-	if err != nil {
-		if mysqlerrnum.FromError(err) == mysqlerrnum.ErrDupEntry {
-			return
-		}
-
-		g.replyError(ErrAuthAdd)
 		return
 	}
 
@@ -235,7 +157,14 @@ func (g *GameSpySession) authAddFriend(command common.GameSpyCommand) {
 		return
 	}
 
-	sendMessageToSession(BuddyRequest, recipient.Profile.ID, g, addFriendMessage)
+	// TODO: see if this should go last
+	g.sendFriendStatus(recipient.Profile.ID, false)
+
+	sendMessageToSession(BuddyAuth, g.Profile.ID, recipient, "")
+
+	if recipient.isBm1AuthMessageNeeded() {
+		sendMessageToSession(BuddyMessage, g.Profile.ID, recipient, bm1AuthMessage)
+	}
 }
 
 func (g *GameSpySession) setStatus(command common.GameSpyCommand) {
