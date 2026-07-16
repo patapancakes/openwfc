@@ -72,12 +72,6 @@
       -->
      <logOutput>StdOutAndFile</logOutput>
 
-     <!-- API secret.
-          This is used for API authentication and should only be shared with
-          trusted administrators.
-      -->
-     <apiSecret>hQ3f57b3tW2WnjJH3v</apiSecret>
-
      <eventReporting>
           <!-- Enable to log events to the "events" table in the database -->
           <logToDatabase>true</logToDatabase>

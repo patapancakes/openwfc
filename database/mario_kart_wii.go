@@ -1,7 +1,6 @@
 package database
 
 import (
-	"database/sql"
 	"owfc/common"
 )
 
@@ -129,51 +128,4 @@ func (c *Connection) InsertMarioKartWiiGhostFile(regionId common.MarioKartWiiLea
 	_, err := c.pool.ExecContext(c.ctx, insertGhostFileStatement, regionId, courseId, score, pid, playerInfo, ghost)
 
 	return err
-}
-
-// Mario Kart Wii friend info functions for API compatibility
-
-func (c *Connection) GetMKWFriendInfo(profileId uint32) string {
-	records, err := c.GetSakeRecords(1687, []int32{int32(profileId)}, "FriendInfo", nil, []string{"info"}, "")
-	if err != nil || len(records) == 0 {
-		return ""
-	}
-
-	infoField, ok := records[0].Fields["info"]
-	if !ok {
-		return ""
-	}
-
-	return infoField.Value
-}
-
-func (c *Connection) UpdateMKWFriendInfo(profileId uint32, info string) {
-	records, err := c.GetSakeRecords(1687, []int32{int32(profileId)}, "FriendInfo", nil, []string{"info"}, "")
-	if err == sql.ErrNoRows || (err == nil && len(records) == 0) {
-		// No existing record, insert new one
-		record := SakeRecord{
-			GameId:  1687,
-			TableId: "FriendInfo",
-			OwnerId: int32(profileId),
-			Fields: map[string]SakeField{
-				"info": {
-					Type:  SakeFieldTypeBinaryData,
-					Value: info,
-				},
-			},
-		}
-		_, err = c.InsertSakeRecord(record)
-	} else if err == nil {
-		// Update existing record
-		records[0].Fields["info"] = SakeField{
-			Type:  SakeFieldTypeBinaryData,
-			Value: info,
-		}
-		err = c.UpdateSakeRecord(records[0], int32(profileId))
-
-	}
-
-	if err != nil {
-		panic(err)
-	}
 }

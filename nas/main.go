@@ -3,7 +3,6 @@ package nas
 import (
 	"context"
 	"net/http"
-	"owfc/api"
 	"owfc/common"
 	"owfc/database"
 	"owfc/gamestats"
@@ -75,7 +74,6 @@ func StartServer(reload bool) {
 
 	http.HandleFunc("GET conntest.nintendowifi.net/", handleConnectionTest)
 
-	api.RegisterHandlers(http.DefaultServeMux)
 	sake.RegisterHandlers(sakeMux)
 	race.RegisterHandlers(raceMux)
 	gamestatsMux.HandleFunc("/", gamestats.HandleWebRequest)

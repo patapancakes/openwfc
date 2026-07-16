@@ -39,8 +39,6 @@ type Config struct {
 	WiiCertPath string `xml:"wiiCertPath"`
 	WiiKeyPath  string `xml:"wiiKeyPath"`
 
-	APISecret string `xml:"apiSecret"`
-
 	ServerName string `xml:"serverName,omitempty"`
 
 	EventReporting EventReportingConfig `xml:"eventReporting"`
