@@ -75,43 +75,5 @@
      <eventReporting>
           <!-- Enable to log events to the "events" table in the database -->
           <logToDatabase>true</logToDatabase>
-          <!-- Discord logging via webhook -->
-          <discord>
-               <!-- Multiple <webhook> elements can be added here -->
-               <webhook>
-                    <!-- Enable sending events to this webhook -->
-                    <enabled>true</enabled>
-                    <!-- The URL of the webhook to send events to -->
-                    <url>https://discord.com/api/webhooks/...</url>
-                    <!-- The author tag to be displayed in the webhook embed, can be omitted -->
-                    <author>wfc-server event reporting</author>
-                    <!--
-                         The list of events that will be reported on this webhook.
-                         Hint: Use the event type "all" to report all events to this webhook.
-                         The following list contains all possible event types that can be reported:
-                     -->
-                    <eventTypes>
-                         <!-- <event>all</event> -->
-                         <event>backend_started</event>
-                         <event>backend_stopped</event>
-                         <event>profile_created</event>
-                         <event>logged_in</event>
-                         <event>logged_out</event>
-                         <event>received_login_info</event>
-                         <event>device_authenticated</event>
-                         <event>gpcm_returned_error</event>
-                         <event>group_created</event>
-                         <event>group_deleted</event>
-                         <event>group_joined</event>
-                         <event>group_left</event>
-                         <event>group_host_changed</event>
-                         <event>natneg_succeeded</event>
-                         <event>natneg_failed</event>
-                         <event>profile_kicked</event>
-                         <event>profile_banned</event>
-                         <event>profile_unbanned</event>
-                    </eventTypes>
-               </webhook>
-          </discord>
      </eventReporting>
 </Config>

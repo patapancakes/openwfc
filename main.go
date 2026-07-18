@@ -80,8 +80,6 @@ func connectAndLogEvent(eventType string) {
 
 // backendMain starts all the servers and creates an RPC server to communicate with the frontend
 func backendMain(noSignal, noReload bool) {
-	config.RegisterWebhooks()
-
 	err := os.Mkdir("state", 0755)
 	if err != nil && !os.IsExist(err) {
 		panic(err)
