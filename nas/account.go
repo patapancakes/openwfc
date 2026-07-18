@@ -158,9 +158,18 @@ func login(moduleName string, fields map[string][]byte) map[string]string {
 
 	user, ok := db.GetUser(token.UserID)
 	if !ok {
-		logging.Error(moduleName, "Unknown userid")
+		/*logging.Error(moduleName, "Unknown userid")
 		param["returncd"] = UserIDUnknown
-		return param
+		return param*/
+
+		// conntest will acctcreate with NAS before DNS can be set
+		// try to create the account now if it doesn't exist
+		// TODO: add a config value for this
+		createResponse := acctcreate(moduleName, fields)
+		if createResponse["returncd"] != AcctCreateOK {
+			param["returncd"] = createResponse["returncd"]
+			return param
+		}
 	}
 	if user.Banned {
 		logging.Error(moduleName, "User is banned")
@@ -312,15 +321,18 @@ func svcloc(moduleName string, fields map[string][]byte) map[string]string {
 		"statusdata": "Y",
 	}
 
-	token := login(moduleName, fields)["token"]
+	loginResponse := login(moduleName, fields)
+	if loginResponse["returncd"] != LoginOK {
+		param["returncd"] = loginResponse["returncd"]
+		return param
+	}
 
 	switch string(fields["svc"]) {
 	default:
-		param["servicetoken"] = token
 		param["svchost"] = "n/a"
 
 	case "9000", "9001":
-		param["servicetoken"] = token
+		param["servicetoken"] = loginResponse["token"]
 		param["svchost"] = "dls1.nintendowifi.net"
 	}
 
