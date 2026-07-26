@@ -1,6 +1,8 @@
 package nas
 
-var t = [16]byte{
+import "encoding/binary"
+
+var invT = [16]byte{
 	7, 2, 5, 10,
 	11, 0, 13, 15,
 	12, 1, 6, 8,
@@ -14,53 +16,35 @@ var exc = [8]byte{
 func decodeDSUserID(userid uint64) (uint16, uint32, bool, uint8) {
 	var b [8]byte
 
-	for i := range b {
-		b[i] = byte(userid >> (8 * i))
-	}
+	binary.LittleEndian.PutUint64(b[:], userid)
 
 	for i := range 6 {
 		b[i] ^= 0x67
 	}
 
-	b[5] &= 0x07
-	b[6] = 0
-	b[7] = 0
+	v := binary.LittleEndian.Uint64(b[:])
 
-	var v uint64
-	for i, x := range b {
-		v |= uint64(x) << (8 * i)
-	}
+	v &= 1<<43 - 1
+	v = (v >> 1) | ((v & 1) << 42)
 
-	v = (v>>1 | v&1<<42) & (1<<43 - 1)
-
-	for i := range b {
-		b[i] = byte(v >> (8 * i))
-	}
+	binary.LittleEndian.PutUint64(b[:], v)
 
 	tmp := b
-	for i, src := range exc {
-		b[i] = tmp[src]
-	}
-
 	for i := range 5 {
-		high := t[b[i]>>4]
-		low := t[b[i]&0x0F]
-		b[i] = high<<4 | low
+		x := tmp[exc[i]]
+		b[i] = invT[x>>4]<<4 | invT[x&0x0F]
 	}
 
 	for i := range 6 {
 		b[i] ^= 0xD6
 	}
 
-	v = 0
-	for i, x := range b {
-		v |= uint64(x) << (8 * i)
-	}
+	v = binary.LittleEndian.Uint64(b[:])
 
 	uid := uint16(v >> 27 & 0xFFFF)
 	mac := uint32(v >> 3 & 0xFFFFFF) // last 3 octets of mac
-	nintendo := v>>2&1 == 0          // if prefix 00:09:BF
+	otherVendor := v >> 2 & 1        // if prefix not 00:09:BF
 	unk := uint8(v & 0x03)           // always 0?
 
-	return uid, mac, nintendo, unk
+	return uid, mac, otherVendor == 1, unk
 }
