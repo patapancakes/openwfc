@@ -187,8 +187,7 @@ func login(moduleName string, fields map[string][]byte) map[string]string {
 
 	gsbrcd := string(fields["gsbrcd"])
 	if gsbrcd != "" {
-		if len(gsbrcd) != 11 || !strings.HasPrefix(gsbrcd, string(gamecd[:3])) {
-			// some games don't set the region in gsbrcd correctly (mkds)
+		if len(gsbrcd) != 11 {
 			logging.Error(moduleName, "Invalid gsbrcd string in form")
 			param["returncd"] = MissingParam
 			return param
