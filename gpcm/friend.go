@@ -258,29 +258,6 @@ func (g *GameSpySession) sendFriendStatus(profileId uint32, buffer bool) {
 	f(BuddyStatus, g.Profile.ID, recipient, g.Status)
 }
 
-func (g *GameSpySession) exchangeFriendStatus(profileId uint32) {
-	recipient, ok := sessions[profileId]
-	if !ok || !recipient.LoggedIn {
-		return
-	}
-
-	// to recipient
-	if strings.HasPrefix(recipient.GameCode, "RMC") && len(g.LocString) > 0x14 {
-		logging.Warn("GPCM", "Blocked message from", aurora.Cyan(g.Profile.ID), "to", aurora.Cyan(recipient.Profile.ID), "due to a stack overflow exploit")
-		return
-	}
-
-	sendMessageToSession(BuddyStatus, g.Profile.ID, recipient, g.Status)
-
-	// to sender
-	if strings.HasPrefix(g.GameCode, "RMC") && len(recipient.LocString) > 0x14 {
-		logging.Warn("GPCM", "Blocked message from", aurora.Cyan(recipient.Profile.ID), "to", aurora.Cyan(g.Profile.ID), "due to a stack overflow exploit")
-		return
-	}
-
-	sendMessageToSession(BuddyStatus, profileId, g, recipient.Status)
-}
-
 func (g *GameSpySession) sendLogoutStatus() {
 	mutex.Lock()
 	defer mutex.Unlock()

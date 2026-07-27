@@ -212,7 +212,8 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 				continue
 			}
 
-			session.sendFriendStatus(g.Profile.ID, true)
+			session.sendFriendStatus(g.Profile.ID, false)
+			g.sendFriendStatus(session.Profile.ID, true)
 		}
 
 		g.flushBuffer()
