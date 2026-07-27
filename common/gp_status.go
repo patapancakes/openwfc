@@ -1,34 +1,33 @@
 package common
 
-// GP statuses
-// should probably be in gpcm, qr2 needs it though
+// TODO: should probably be in gpcm, qr2 needs it though
 
 const (
-	Offline = iota
-	Online
-	Playing
-	MatchAnybody
-	MatchFriend
+	GPStatusOffline = iota
+	GPStatusOnline
+	GPStatusPlaying
+	GPStatusMatchAnybody
+	GPStatusMatchFriend
 
-	MatchClient
-	MatchServer
+	StatusMatchClient
+	StatusMatchServer
 )
 
 func GetStatusString(status int) string {
 	switch status {
-	case Offline:
+	case GPStatusOffline:
 		return "OFFLINE"
-	case Online:
+	case GPStatusOnline:
 		return "ONLINE"
-	case Playing:
+	case GPStatusPlaying:
 		return "PLAYING"
-	case MatchAnybody:
+	case GPStatusMatchAnybody:
 		return "MATCH_ANYBODY"
-	case MatchFriend:
+	case GPStatusMatchFriend:
 		return "MATCH_FRIEND"
-	case MatchClient:
+	case StatusMatchClient:
 		return "MATCH_SC_CL"
-	case MatchServer:
+	case StatusMatchServer:
 		return "MATCH_SC_SV"
 	}
 

@@ -242,7 +242,7 @@ func ProcessGPStatusUpdate(profileID uint32, senderIP uint64, status int) {
 		}
 	}
 
-	if status == common.Offline || status == common.Online || status == common.MatchAnybody || status == common.MatchFriend {
+	if status == common.GPStatusOffline || status == common.GPStatusOnline || status == common.GPStatusMatchAnybody || status == common.GPStatusMatchFriend {
 		session := sessions[senderIP]
 		if session == nil || session.groupPointer == nil {
 			return
