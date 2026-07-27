@@ -64,7 +64,6 @@ func StartServer(reload bool) {
 
 	// Start SQL
 	db = database.Start(config)
-	db.UpdateTables()
 
 	if reload {
 		err := loadState()
