@@ -100,7 +100,6 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 
 	if len(unknowns) > 0 {
 		// Try to login using the first unknown as a profile ID
-		// This makes it possible to execute the exploit on the client sooner
 
 		mutex.Lock()
 		sessionPtr, sessionExists := sessions[lookupAddr]
