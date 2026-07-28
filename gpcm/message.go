@@ -3,10 +3,14 @@ package gpcm
 import (
 	"owfc/common"
 	"owfc/logging"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/logrusorgru/aurora/v3"
 )
+
+var isDWCMatchCommand = regexp.MustCompile(`^GPCM\d+vMAT`).MatchString
 
 func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 	// TODO: There are other command values that mean the same thing
@@ -34,6 +38,26 @@ func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 		logging.Error(g.ModuleName, "Missing message value")
 		g.replyError(ErrMessage)
 		return
+	}
+
+	// DWCi_GetGPBuddyAdditionalMsg copies everything between / into a 16 byte buffer
+	// regardless of actual size
+	if isDWCMatchCommand(msg) {
+		for i, segment := range strings.Split(msg, "/") {
+			// first segment is header and message type
+			if i == 0 {
+				continue
+			}
+
+			// segments are uint32 strings, skip if in bounds (10 characters)
+			if len(segment) <= 10 {
+				continue
+			}
+
+			logging.Error(g.ModuleName, "Invalid DWC match command parameter")
+			g.replyError(ErrMessage)
+			return
+		}
 	}
 
 	mutex.Lock()
