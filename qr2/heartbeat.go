@@ -52,7 +52,13 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 
 	statechanged, ok := payload["statechanged"]
 	if ok && statechanged == "2" {
-		logging.Notice(moduleName, "Client session shutdown")
+		logging.Notice(moduleName, "Server shut down")
+		logging.Event("server_shutdown", map[string]any{
+			"session_id": sessionId,
+			"data":       payload,
+			"ip_address": addr.String(),
+		})
+
 		mutex.Lock()
 		removeSession(lookupAddr)
 		mutex.Unlock()

@@ -2,8 +2,10 @@ package qr2
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
 	"owfc/common"
+	"owfc/database"
 	"owfc/logging"
 	"strings"
 	"sync"
@@ -28,6 +30,8 @@ const (
 )
 
 var (
+	db database.Connection
+
 	masterConn net.PacketConn
 	inShutdown atomic.Bool
 	waitGroup  = sync.WaitGroup{}
@@ -36,6 +40,9 @@ var (
 func StartServer(reload bool) {
 	// Get config
 	config := common.GetConfig()
+
+	// Start SQL
+	db = database.Start(config)
 
 	address := *config.GameSpyAddress + ":27900"
 	conn, err := net.ListenPacket("udp", address)
@@ -54,6 +61,11 @@ func StartServer(reload bool) {
 
 		logging.Notice("QR2", "Loaded", aurora.Cyan(len(sessions)), "sessions")
 	}
+
+	db.RegisterEvents(config, []string{
+		"server_created",
+		"server_shutdown",
+	})
 
 	waitGroup.Go(func() {
 		// Close the listener when the application closes.
@@ -150,6 +162,26 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 
 			session.Authenticated = true
 			mutex.Unlock()
+
+			data := new(strings.Builder)
+			for k, v := range session.Data {
+				if k == "gamename" || k == "statechanged" {
+					continue
+				}
+
+				if data.Len() != 0 {
+					data.WriteString(", ")
+				}
+
+				fmt.Fprintf(data, "%s: %s", k, v)
+			}
+
+			logging.Notice(moduleName, "Server created:", aurora.Cyan(game.Name), "/", aurora.Cyan(data))
+			logging.Event("server_created", map[string]any{
+				"session_id": session.SessionID,
+				"data":       session.Data,
+				"ip_address": addr.String(),
+			})
 
 			_, _ = conn.WriteTo(createResponseHeader(ClientRegisteredReply, session.SessionID), &addr)
 		} else {
