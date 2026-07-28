@@ -553,7 +553,7 @@ func handleWiiTLSHandshake(moduleName string, conn io.ReadWriter) (macFn macFunc
 		return
 	}
 
-	if !bytes.Equal(preMasterSecret[:2], []byte{0x03, 0x01}) {
+	if !bytes.HasPrefix(preMasterSecret, []byte{0x03, 0x01}) {
 		logging.Error(moduleName, "Invalid TLS version in pre master secret:", aurora.BrightCyan(preMasterSecret[:2]))
 		err = errors.New("invalid TLS version in pre master secret")
 		return
@@ -712,7 +712,7 @@ func handleDSSSLHandshake(moduleName string, conn io.ReadWriter) (macFn macFunct
 		return
 	}
 
-	if !bytes.Equal(preMasterSecret[:2], []byte{0x03, 0x00}) {
+	if !bytes.HasPrefix(preMasterSecret, []byte{0x03, 0x00}) {
 		logging.Error(moduleName, "Invalid TLS version in pre master secret:", aurora.BrightCyan(preMasterSecret[:2]))
 		err = errors.New("invalid TLS version in pre master secret")
 		return

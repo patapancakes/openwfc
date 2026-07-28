@@ -371,7 +371,7 @@ func (rkgd RKGhostData) IsRKGDFileValid(moduleName string, expectedCourse MarioK
 		return false
 	}
 
-	if !bytes.Equal(rkgd[:4], rkgdFileMagic) {
+	if !bytes.HasPrefix(rkgd, rkgdFileMagic) {
 		logging.Error(moduleName, "Invalid RKGD magic:", aurora.Cyan(string(rkgd[:4])))
 		return false
 	}

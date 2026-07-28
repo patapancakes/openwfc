@@ -186,7 +186,7 @@ func handleConnection(conn net.PacketConn, addr net.Addr, buffer []byte) {
 	defer waitGroup.Done()
 
 	// Validate the packet magic
-	if len(buffer) < 12 || !bytes.Equal(buffer[:6], []byte{0xfd, 0xfc, 0x1e, 0x66, 0x6a, 0xb2}) {
+	if len(buffer) < 12 || !bytes.HasPrefix(buffer, []byte{0xfd, 0xfc, 0x1e, 0x66, 0x6a, 0xb2}) {
 		logging.Error("NATNEG:"+addr.String(), "Invalid packet header")
 		return
 	}

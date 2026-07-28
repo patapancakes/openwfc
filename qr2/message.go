@@ -28,9 +28,9 @@ func SendClientMessage(senderIP string, dest netip.AddrPort, message []byte) {
 
 	// DWCi_QR2ClientMsgCallback blindly trusts the size specified in the header
 	// make sure it's the correct size
-	if len(message) >= 4 && (bytes.Equal(message[:4], []byte("SBCM")) || bytes.Equal(message[:4], []byte{0xbb, 0x49, 0xcc, 0x4d})) {
+	if bytes.HasPrefix(message, []byte("SBCM")) || bytes.HasPrefix(message, []byte{0xbb, 0x49, 0xcc, 0x4d}) {
 		// DWC match command
-		if len(message) < 0x14 || len(message) > 0x94 {
+		if len(message) < 0x14 {
 			logging.Error(moduleName, "Received invalid length match command packet")
 			return
 		}
