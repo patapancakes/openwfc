@@ -190,13 +190,13 @@ func (g *GameSpySession) setStatus(command common.GameSpyCommand) {
 		return
 	}
 
-	statusMsg := "|s|" + strconv.Itoa(status) + "|ss|" + statstring + "|ls|" + locstring + "|ip|0|p|0|qm|0"
+	g.LocString = locstring
+
+	ip, _ := common.IPFormatToString(g.RemoteAddr)
+	g.Status = "|s|" + strconv.Itoa(status) + "|ss|" + statstring + "|ls|" + locstring + "|ip|" + ip + "|p|0|qm|0"
 
 	mutex.Lock()
 	defer mutex.Unlock()
-
-	g.LocString = locstring
-	g.Status = statusMsg
 
 	friends, err := db.GetFriends(g.Profile.ID)
 	if err != nil {
