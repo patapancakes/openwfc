@@ -177,15 +177,17 @@ func (g *GameSpySession) setStatus(command common.GameSpyCommand) {
 	logging.Notice(g.ModuleName, "New status:", aurora.BrightMagenta(GetStatusString(status)))
 
 	statstring, ok := command.OtherValues["statstring"]
-	if !ok {
-		logging.Warn(g.ModuleName, "Missing statstring")
-		statstring = ""
+	if !ok || len(statstring) >= 256 {
+		logging.Warn(g.ModuleName, "Invalid statstring")
+		g.replyError(ErrStatus)
+		return
 	}
 
 	locstring, ok := command.OtherValues["locstring"]
-	if !ok {
-		logging.Warn(g.ModuleName, "Missing locstring")
-		locstring = ""
+	if !ok || len(locstring) >= 256 {
+		logging.Warn(g.ModuleName, "Invalid locstring")
+		g.replyError(ErrStatus)
+		return
 	}
 
 	statusMsg := "|s|" + strconv.Itoa(status) + "|ss|" + statstring + "|ls|" + locstring + "|ip|0|p|0|qm|0"
