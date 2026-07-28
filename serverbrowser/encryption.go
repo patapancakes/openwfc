@@ -1,170 +1,169 @@
 package serverbrowser
 
 import (
-	"time"
+	"bytes"
+	"crypto/rand"
+	"encoding/binary"
+	"io"
+	"slices"
 )
 
+type CryptState struct {
+	cards      [256]byte
+	rotor      byte
+	ratchet    byte
+	avalanche  byte
+	lastPlain  byte
+	lastCipher byte
+}
+
 func EncryptTypeX(key []byte, challenge []byte, data []byte) []byte {
-	returnData := make([]byte, 20)
-	returnData = append(returnData, data...)
-
-	rnd := time.Now().Unix()
-
-	for i := range 20 {
-		rnd = (rnd * 0x343FD) + 0x269EC3
-		returnData[i] = byte(rnd ^ int64(key[i%len(key)]) ^ int64(challenge[i%len(challenge)]))
-	}
-
-	headerLen := 7
-	returnData[0] = byte((headerLen - 2) ^ 0xec)
-	returnData[1] = 0x00
-	returnData[2] = 0x00
-	returnData[headerLen-1] = byte((20 - headerLen) ^ 0xea)
-
-	header := returnData[:20]
-	encxkey := make([]byte, 261)
-	returnData = initEncrypt(encxkey, key, challenge, returnData)
-	func6e(encxkey, returnData)
-
-	return append(header, returnData...)
+	var state CryptState
+	return append(state.CreateHeader(key, challenge), state.Encrypt(data)...)
 }
 
-func initEncrypt(encxkey, key, validate, data []byte) []byte {
-	// TODO: Bounds
-	headerLen := (data[0] ^ 0xec) + 2
-	dataStart := data[headerLen-1] ^ 0xea
+// also initializes crypto state
+func (s *CryptState) CreateHeader(key, challenge []byte) []byte {
+	header := new(bytes.Buffer)
 
-	enctypexFuncX(encxkey, key, validate, data[headerLen:headerLen+dataStart])
-	return data[headerLen+dataStart:]
+	const randLen = 5
+	header.WriteByte((randLen + 2) ^ 0xEC)                // random bytes + backend game flags length
+	binary.Write(header, binary.BigEndian, uint16(0))     // backend game flags
+	io.Copy(header, io.LimitReader(rand.Reader, randLen)) // write randLen bytes
+
+	const keyLen = 8
+	header.WriteByte(keyLen ^ 0xEA)                      // key length
+	io.Copy(header, io.LimitReader(rand.Reader, keyLen)) // write keyLen bytes
+
+	s.initKey(key, challenge, header.Bytes()[1+2+randLen+1:]) // rand length byte + backend game flags + rand + key length byte
+	return header.Bytes()
 }
 
-func enctypexFuncX(encxkey, key, challenge, data []byte) {
+func (s *CryptState) initKey(key, challenge, data []byte) {
 	for i := range data {
-		challenge[(int(key[i%len(key)])*i)&7] ^= challenge[i&7] ^ data[i]
+		challenge[(int(key[i%len(key)])*i)%len(challenge)] ^= challenge[i%len(challenge)] ^ data[i]
 	}
 
-	func4(encxkey, challenge, 8)
+	s.init(challenge)
 }
 
-func func4(encxkey, challenge []byte, challengeLen int) {
-	for i := range 256 {
-		encxkey[i] = byte(i)
+func (s *CryptState) init(challenge []byte) {
+	for i := range s.cards {
+		s.cards[i] = byte(i)
 	}
 
-	n1 := 0
-	n2 := 0
-	t1 := 0
-	for i := 255; i != -1; i-- {
-		t1, n1, n2 = func5(encxkey, i, challenge, challengeLen, n1, n2)
-		t2 := encxkey[i]
-		encxkey[i] = encxkey[t1]
-		encxkey[t1] = t2
+	var toswap, keyPos, rsum int
+	for i := range slices.Backward(s.cards[:]) {
+		toswap, rsum, keyPos = s.keyrand(i, challenge, rsum, keyPos)
+		swaptemp := s.cards[i]
+		s.cards[i] = s.cards[toswap]
+		s.cards[toswap] = swaptemp
 	}
 
-	encxkey[256] = encxkey[1]
-	encxkey[257] = encxkey[3]
-	encxkey[258] = encxkey[5]
-	encxkey[259] = encxkey[7]
-	encxkey[260] = encxkey[n1&0xff]
+	s.rotor = s.cards[1]
+	s.ratchet = s.cards[3]
+	s.avalanche = s.cards[5]
+	s.lastPlain = s.cards[7]
+	s.lastCipher = s.cards[rsum%len(s.cards)]
 }
 
-func func5(encxkey []byte, cnt int, id []byte, idLen, n1, n2 int) (int, int, int) {
-	if cnt == 0 {
-		return 0, n1, n2
+func (s *CryptState) keyrand(limit int, key []byte, rsum, keyPos int) (int, int, int) {
+	if limit == 0 {
+		return 0, rsum, keyPos
 	}
 
 	mask := 1
 	doLoop := true
-	if cnt > 1 {
+	if limit > 1 {
 		for doLoop {
 			mask = (mask << 1) + 1
-			doLoop = mask < cnt
+			doLoop = mask < limit
 		}
 	}
 
-	i := 0
-	tmp := 0
+	retries := 0
+	u := 0
 	doLoop = true
 	for doLoop {
-		n1 = int(encxkey[n1&0xff] + id[n2])
-		n2 += 1
+		rsum = int(s.cards[rsum%len(s.cards)] + key[keyPos])
+		keyPos++
 
-		if n2 >= idLen {
-			n2 = 0
-			n1 += idLen
+		if keyPos >= len(key) {
+			keyPos = 0
+			rsum += len(key)
 		}
 
-		tmp = n1 & mask
+		u = rsum & mask
 
-		i += 1
-		if i > 11 {
-			tmp %= cnt
+		retries++
+		if retries > 11 {
+			u %= limit
 		}
 
-		doLoop = tmp > cnt
+		doLoop = u > limit
 	}
 
-	return tmp, n1, n2
+	return u, rsum, keyPos
 }
 
-func func6e(encxkey []byte, data []byte) []byte {
+func (s *CryptState) Encrypt(data []byte) []byte {
 	for i := range data {
-		data[i] = func7e(encxkey, data[i])
+		data[i] = s.encryptByte(data[i])
 	}
 
 	return data
 }
 
-func func7e(encxkey []byte, d byte) byte {
-	a := encxkey[256]
-	b := encxkey[257]
-	c := encxkey[a]
-	encxkey[256] = (a + 1) & 0xff
-	encxkey[257] = (b + c) & 0xff
+func (s *CryptState) encryptByte(d byte) byte {
+	a := s.rotor
+	b := s.ratchet
+	c := s.cards[a]
+	s.rotor = a + 1
+	s.ratchet = b + c
 
-	a = encxkey[260]
-	b = encxkey[257]
-	b = encxkey[b]
-	c = encxkey[a]
-	encxkey[a] = b
+	a = s.lastCipher
+	b = s.ratchet
+	b = s.cards[b]
+	c = s.cards[a]
+	s.cards[a] = b
 
-	a = encxkey[259]
-	b = encxkey[257]
-	a = encxkey[a]
-	encxkey[b] = a
+	a = s.lastPlain
+	b = s.ratchet
+	a = s.cards[a]
+	s.cards[b] = a
 
-	a = encxkey[256]
-	b = encxkey[259]
-	a = encxkey[a]
-	encxkey[b] = a
+	a = s.rotor
+	b = s.lastPlain
+	a = s.cards[a]
+	s.cards[b] = a
 
-	a = encxkey[256]
-	encxkey[a] = c
+	a = s.rotor
+	s.cards[a] = c
 
-	b = encxkey[258]
-	a = encxkey[c]
-	c = encxkey[259]
-	b = (a + b) & 0xff
-	encxkey[258] = b
+	b = s.avalanche
+	a = s.cards[c]
+	c = s.lastPlain
+	b = a + b
+	s.avalanche = b
 
 	a = b
-	c = encxkey[c]
-	b = encxkey[257]
-	b = encxkey[b]
-	a = encxkey[a]
-	c = (b + c) & 0xff
-	b = encxkey[260]
-	b = encxkey[b]
-	c = (b + c) & 0xff
-	b = encxkey[c]
-	c = encxkey[256]
-	c = encxkey[c]
-	a = (a + c) & 0xff
-	c = encxkey[b]
-	b = encxkey[a]
+	c = s.cards[c]
+	b = s.ratchet
+	b = s.cards[b]
+	a = s.cards[a]
+	c = b + c
+	b = s.lastCipher
+	b = s.cards[b]
+	c = b + c
+	b = s.cards[c]
+	c = s.rotor
+	c = s.cards[c]
+	a = a + c
+	c = s.cards[b]
+	b = s.cards[a]
 	c ^= b ^ d
-	encxkey[260] = c
-	encxkey[259] = d
+	s.lastCipher = c
+	s.lastPlain = d
 
 	return c
 }
