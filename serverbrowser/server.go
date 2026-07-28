@@ -286,7 +286,7 @@ func handleServerListRequest(moduleName string, connIndex uint64, address string
 	}
 
 	// Write the encrypted reply
-	if err := common.SendPacket(ServerName, connIndex, common.EncryptTypeX([]byte(gameInfo.SecretKey), challenge, output)); err != nil {
+	if err := common.SendPacket(ServerName, connIndex, EncryptTypeX([]byte(gameInfo.SecretKey), challenge, output)); err != nil {
 		logging.Error(moduleName, "Failed to send packet:", err)
 	}
 }
