@@ -52,5 +52,7 @@ func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 		return
 	}
 
+	logging.Notice(g.ModuleName, "Sending buddy message to", aurora.Cyan(toSession.Profile.ID))
+
 	sendMessageToSession(BuddyMessage, g.Profile.ID, toSession, msg)
 }
