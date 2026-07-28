@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"owfc/common"
 	"owfc/logging"
-	"owfc/qr2"
 	"strconv"
 	"strings"
 	"time"
@@ -165,9 +164,6 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 	g.ModuleName = "GPCM:" + strconv.FormatInt(int64(g.Profile.ID), 10)
 	g.ModuleName += "/" + common.CalcFriendCodeString(g.Profile.ID, g.Profile.GsbrCode[:4])
 
-	// Notify QR2 of the login
-	qr2.Login(g.Profile.ID, g.GameCode, g.InGameName, g.ConsoleFriendCode, g.Profile.GsbrCode[:4], g.RemoteAddr)
-
 	replyUserId := g.Profile.UserID
 	if g.UnitCode == UnitCodeDS {
 		// Workaround for SDK bug
@@ -213,7 +209,6 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 			}
 
 			session.sendFriendStatus(g.Profile.ID, false)
-			g.sendFriendStatus(session.Profile.ID, true)
 		}
 
 		g.flushBuffer()

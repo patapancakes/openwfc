@@ -6,7 +6,6 @@ import (
 	"owfc/common"
 	"owfc/database"
 	"owfc/logging"
-	"owfc/qr2"
 	"strings"
 
 	"github.com/linkdata/deadlock"
@@ -39,10 +38,6 @@ type GameSpySession struct {
 	Status    string
 	LocString string
 
-	QR2IP          uint64
-	Reservation    common.MatchCommandData
-	ReservationPID uint32
-
 	ReadBuffer  []byte
 	WriteBuffer string
 }
@@ -57,8 +52,6 @@ var (
 )
 
 func StartServer(reload bool) {
-	qr2.SetGPErrorCallback(KickPlayer)
-
 	// Get config
 	config := common.GetConfig()
 
@@ -80,7 +73,6 @@ func StartServer(reload bool) {
 		"logged_in",
 		"logged_out",
 		"received_login_info",
-		"device_authenticated",
 		"gpcm_returned_error",
 	})
 }
@@ -109,10 +101,6 @@ func CloseConnection(index uint64) {
 	logging.Notice(session.ModuleName, "Connection closed")
 
 	if session.LoggedIn {
-		qr2.Logout(session.Profile.ID)
-		if session.QR2IP != 0 {
-			qr2.ProcessGPStatusUpdate(session.Profile.ID, session.QR2IP, common.GPStatusOffline)
-		}
 		session.sendLogoutStatus()
 
 		logging.Event("logged_out", map[string]any{

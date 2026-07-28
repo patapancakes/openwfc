@@ -1,7 +1,6 @@
 package serverbrowser
 
 import (
-	"maps"
 	"owfc/filter"
 	"owfc/logging"
 
@@ -31,10 +30,6 @@ func filterServers(moduleName string, servers []map[string]string, queryGame str
 			continue
 		}
 
-		if server["dwc_mver"] == "90" && (server["dwc_hoststate"] != "0" && server["dwc_hoststate"] != "2") {
-			continue
-		}
-
 		ret, err := filter.Eval(tree, server, queryGame)
 		if err != nil {
 			logging.Error(moduleName, "Error evaluating filter:", err.Error())
@@ -50,43 +45,5 @@ func filterServers(moduleName string, servers []map[string]string, queryGame str
 		logging.Info(moduleName, "Matched", aurora.BrightCyan(len(filtered)), "servers")
 	}
 
-	return filtered
-}
-
-func filterSelfLookup(moduleName string, servers []map[string]string, queryGame string, dwcPid string, publicIP string) []map[string]string {
-	var filtered []map[string]string
-
-	// Search for where the profile ID matches
-	for _, server := range servers {
-		if server["gamename"] != queryGame {
-			continue
-		}
-
-		if server["dwc_pid"] == dwcPid {
-			// May not be a self lookup, some games search for friends like this
-			logging.Info(moduleName, "Lookup", aurora.Cyan(dwcPid), "ok")
-			return []map[string]string{server}
-		}
-
-		// Alternatively, if the server hasn't set its dwc_pid field yet, we return servers matching the request's public IP.
-		// If multiple servers exist with the same public IP then the client will use the one with the matching port.
-		// This is a bit of a hack to speed up server creation.
-		if _, ok := server["dwc_pid"]; !ok && server["publicip"] == publicIP {
-			// Create a copy of the map with some values changed
-			newServer := map[string]string{}
-			maps.Copy(newServer, server)
-			newServer["dwc_pid"] = dwcPid
-			newServer["dwc_mtype"] = "0"
-			newServer["dwc_mver"] = "0"
-			filtered = append(filtered, newServer)
-		}
-	}
-
-	if len(filtered) == 0 {
-		logging.Error(moduleName, "Could not find server with dwc_pid", aurora.Cyan(dwcPid))
-		return []map[string]string{}
-	}
-
-	logging.Info(moduleName, "Self lookup for", aurora.Cyan(dwcPid), "matched", aurora.BrightCyan(len(filtered)), "servers via public IP")
 	return filtered
 }

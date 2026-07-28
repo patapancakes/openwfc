@@ -3,7 +3,6 @@ package gpcm
 import (
 	"owfc/common"
 	"owfc/logging"
-	"owfc/qr2"
 	"strconv"
 	"strings"
 
@@ -175,9 +174,7 @@ func (g *GameSpySession) setStatus(command common.GameSpyCommand) {
 		return
 	}
 
-	logging.Notice(g.ModuleName, "New status:", aurora.BrightMagenta(common.GetStatusString(status)))
-
-	qr2.ProcessGPStatusUpdate(g.Profile.ID, g.QR2IP, status)
+	logging.Notice(g.ModuleName, "New status:", aurora.BrightMagenta(GetStatusString(status)))
 
 	statstring, ok := command.OtherValues["statstring"]
 	if !ok {

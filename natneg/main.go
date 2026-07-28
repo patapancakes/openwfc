@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"owfc/common"
+	"owfc/database"
 	"owfc/logging"
 	"sync"
 	"sync/atomic"
@@ -95,6 +96,15 @@ func StartServer(reload bool) {
 	conn, err := net.ListenPacket("udp", address)
 	if err != nil {
 		panic(err)
+	}
+
+	// Connect to database for event logging
+	if config.EventReporting.LogToDatabase {
+		db := database.Start(config)
+		db.RegisterEvents(config, []string{
+			"natneg_succeeded",
+			"natneg_failed",
+		})
 	}
 
 	natnegConn = conn

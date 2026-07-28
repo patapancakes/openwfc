@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"owfc/logging"
-	"owfc/qr2"
 
 	"github.com/logrusorgru/aurora/v3"
 )
@@ -40,7 +39,18 @@ func (session *NATNEGSession) handleReport(conn net.PacketConn, addr net.Addr, b
 			if otherResult != 1 {
 				result = otherResult
 			}
-			qr2.ProcessNATNEGReport(result, client.ServerIP, connecting.ServerIP)
+
+			eventType := "natneg_succeeded"
+			if result != 1 {
+				eventType = "natneg_failed"
+			}
+
+			logging.Event(
+				eventType,
+				map[string]any{
+					"peers": []string{client.ServerIP, connecting.ServerIP},
+				},
+			)
 		}
 	}
 

@@ -1,13 +1,11 @@
-package common
-
-// TODO: should probably be in gpcm, qr2 needs it though
+package gpcm
 
 const (
-	GPStatusOffline = iota
-	GPStatusOnline
-	GPStatusPlaying
-	GPStatusMatchAnybody
-	GPStatusMatchFriend
+	StatusOffline = iota
+	StatusOnline
+	StatusPlaying
+	StatusMatchAnybody
+	StatusMatchFriend
 
 	StatusMatchClient
 	StatusMatchServer
@@ -15,15 +13,15 @@ const (
 
 func GetStatusString(status int) string {
 	switch status {
-	case GPStatusOffline:
+	case StatusOffline:
 		return "OFFLINE"
-	case GPStatusOnline:
+	case StatusOnline:
 		return "ONLINE"
-	case GPStatusPlaying:
+	case StatusPlaying:
 		return "PLAYING"
-	case GPStatusMatchAnybody:
+	case StatusMatchAnybody:
 		return "MATCH_ANYBODY"
-	case GPStatusMatchFriend:
+	case StatusMatchFriend:
 		return "MATCH_FRIEND"
 	case StatusMatchClient:
 		return "MATCH_SC_CL"

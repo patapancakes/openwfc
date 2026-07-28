@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"net"
 	"owfc/common"
-	"owfc/database"
 	"owfc/logging"
 	"strings"
 	"sync"
@@ -44,20 +43,6 @@ func StartServer(reload bool) {
 		panic(err)
 	}
 
-	// Connect to database for event logging
-	if config.EventReporting.LogToDatabase {
-		db := database.Start(config)
-		db.RegisterEvents(config, []string{
-			"group_created",
-			"group_deleted",
-			"group_joined",
-			"group_left",
-			"group_host_changed",
-			"natneg_succeeded",
-			"natneg_failed",
-		})
-	}
-
 	masterConn = conn
 	inShutdown.Store(false)
 
@@ -68,24 +53,9 @@ func StartServer(reload bool) {
 		}
 
 		logging.Notice("QR2", "Loaded", aurora.Cyan(len(sessions)), "sessions")
-
-		err = loadLogins()
-		if err != nil {
-			panic(err)
-		}
-
-		logging.Notice("QR2", "Loaded", aurora.Cyan(len(logins)), "logins")
-
-		err = loadGroups()
-		if err != nil {
-			panic(err)
-		}
-
-		logging.Notice("QR2", "Loaded", aurora.Cyan(len(groups)), "groups")
 	}
 
 	waitGroup.Go(func() {
-
 		// Close the listener when the application closes.
 		defer func() {
 			_ = conn.Close()
@@ -124,20 +94,6 @@ func Shutdown() {
 	}
 
 	logging.Notice("QR2", "Saved", aurora.Cyan(len(sessions)), "sessions")
-
-	err = saveLogins()
-	if err != nil {
-		logging.Error("QR2", "Failed to save logins:", err)
-	}
-
-	logging.Notice("QR2", "Saved", aurora.Cyan(len(logins)), "logins")
-
-	err = saveGroups()
-	if err != nil {
-		logging.Error("QR2", "Failed to save groups:", err)
-	}
-
-	logging.Notice("QR2", "Saved", aurora.Cyan(len(groups)), "groups")
 }
 
 func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
