@@ -104,6 +104,8 @@ func Shutdown() {
 		return
 	}
 
+	db.Close()
+
 	ctx, release := context.WithTimeout(context.Background(), 10*time.Second)
 	defer release()
 

@@ -80,6 +80,8 @@ type NATNEGClient struct {
 }
 
 var (
+	db database.Connection
+
 	sessions   = map[uint32]*NATNEGSession{}
 	mutex      = sync.RWMutex{}
 	natnegConn net.PacketConn
@@ -98,9 +100,10 @@ func StartServer(reload bool) {
 		panic(err)
 	}
 
+	db = database.Start(config)
+
 	// Connect to database for event logging
 	if config.EventReporting.LogToDatabase {
-		db := database.Start(config)
 		db.RegisterEvents(config, []string{
 			"natneg_succeeded",
 			"natneg_failed",
@@ -175,6 +178,8 @@ func Shutdown() {
 	defer func() {
 		common.ShouldNotError(file.Close())
 	}()
+
+	db.Close()
 
 	encoder := gob.NewEncoder(file)
 	common.ShouldNotError(encoder.Encode(sessions))

@@ -105,6 +105,8 @@ func Shutdown() {
 		logging.Error("QR2", "Failed to save sessions:", err)
 	}
 
+	db.Close()
+
 	logging.Notice("QR2", "Saved", aurora.Cyan(len(sessions)), "sessions")
 }
 
