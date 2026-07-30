@@ -2,7 +2,9 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"owfc/common"
+	"strings"
 )
 
 const (
@@ -73,4 +75,41 @@ func (c *Connection) UpdateProfile(profile Profile) error {
 	}
 
 	return nil
+}
+
+func (c *Connection) SearchProfile(filter map[string]string) ([]uint32, error) {
+	q := "SELECT id FROM profiles WHERE"
+	var args []any
+
+	var sub strings.Builder
+	for field, value := range filter {
+		if sub.Len() != 0 {
+			sub.WriteString(" AND")
+		}
+
+		fmt.Fprintf(&sub, " %s = ?", field)
+		args = append(args, value)
+	}
+
+	rows, err := c.pool.QueryContext(c.ctx, q+sub.String(), args...)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	var ids []uint32
+	for rows.Next() {
+		var id uint32
+		err = rows.Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+
+		ids = append(ids, id)
+	}
+
+	return ids, nil
 }
