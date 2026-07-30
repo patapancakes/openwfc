@@ -198,7 +198,7 @@ func (g *GameSpySession) setStatus(command common.GameSpyCommand) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	friends, err := db.GetFriends(g.Profile.ID)
+	friends, err := db.GetFriends(g.Profile.ID, false)
 	if err != nil {
 		return
 	}
@@ -261,7 +261,7 @@ func (g *GameSpySession) sendLogoutStatus() {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	friends, err := db.GetFriends(g.Profile.ID)
+	friends, err := db.GetFriends(g.Profile.ID, false)
 	if err != nil {
 		return
 	}

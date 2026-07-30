@@ -10,84 +10,80 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
+// get list of the specified profiles that have added you as a friend
 func handleOthersList(command common.GameSpyCommand) string {
 	moduleName := "GPSP"
 
-	strProfileId, ok := command.OtherValues["profileid"]
-	if !ok {
-		logging.Error(moduleName, "Missing profileid in otherslist")
-		return gpcm.ErrSearch.GetMessage()
-	}
-
-	profileId, err := strconv.ParseUint(strProfileId, 10, 32)
+	profileId, err := strconv.Atoi(command.OtherValues["profileid"])
 	if err != nil {
-		logging.Error(moduleName, "Invalid profileid:", strProfileId)
+		logging.Error(moduleName, "Invalid profileid:", command.OtherValues["profileid"])
 		return gpcm.ErrSearch.GetMessage()
 	}
 
-	moduleName = "GPSP:" + strconv.FormatUint(profileId, 10)
+	sessionKey, err := strconv.Atoi(command.OtherValues["sesskey"])
+	if err != nil {
+		logging.Error(moduleName, "Invalid sesskey:", command.OtherValues["sesskey"])
+		return gpcm.ErrSearch.GetMessage()
+	}
+
+	if !gpcm.VerifySessionKey(uint32(profileId), int32(sessionKey)) {
+		logging.Error(moduleName, "Invalid sesskey:", command.OtherValues["sesskey"])
+		return gpcm.ErrSearch.GetMessage()
+	}
+
+	moduleName = "GPSP:" + command.OtherValues["profileid"]
 	logging.Info(moduleName, "Lookup otherslist for", aurora.Cyan(profileId))
 
-	strSessionKey, ok := command.OtherValues["sesskey"]
-	if !ok {
-		logging.Error(moduleName, "Missing sesskey in otherslist")
-		return gpcm.ErrSearch.GetMessage()
-	}
-
-	sessionKey, err := strconv.ParseInt(strSessionKey, 10, 32)
+	numopids, err := strconv.Atoi(command.OtherValues["numopids"])
 	if err != nil {
-		logging.Error(moduleName, "Invalid sesskey:", strSessionKey)
+		logging.Error(moduleName, "Invalid numopids:", command.OtherValues["numopids"])
 		return gpcm.ErrSearch.GetMessage()
 	}
 
-	numopids, ok := command.OtherValues["numopids"]
-	if !ok {
-		logging.Error(moduleName, "Missing numopids in otherslist")
-		return gpcm.ErrSearch.GetMessage()
+	// why even send the request at this point
+	if numopids == 0 {
+		return `\otherslist\\oldone\\final`
 	}
 
-	opids, ok := command.OtherValues["opids"]
-	if !ok {
-		logging.Error(moduleName, "Missing opids in otherslist")
-		return gpcm.ErrSearch.GetMessage()
-	}
+	var opids []uint32
+	for opid := range strings.SplitSeq(command.OtherValues["opids"], "|") {
+		opidInt, err := strconv.Atoi(opid)
+		if err != nil {
+			logging.Error("Invalid opid:", opid)
+			return gpcm.ErrSearch.GetMessage()
+		}
 
-	gameName, ok := command.OtherValues["gamename"]
-	if !ok {
-		logging.Error(moduleName, "Missing gamename in otherslist")
-		return gpcm.ErrSearch.GetMessage()
+		opids = append(opids, uint32(opidInt))
 	}
-
-	numOpidsValue, err := strconv.Atoi(numopids)
-	if err != nil {
-		logging.Error(moduleName, "Invalid numopids:", numopids)
-		return gpcm.ErrSearch.GetMessage()
-	}
-
-	var opidsSplit []string
-	if strings.Contains(opids, "|") {
-		opidsSplit = strings.Split(opids, "|")
-	} else if opids != "" && opids != "0" {
-		opidsSplit = append(opidsSplit, opids)
-	}
-
-	if len(opidsSplit) != numOpidsValue && opids != "0" {
-		logging.Error(moduleName, "Mismatch opids length with numopids:", aurora.Cyan(len(opidsSplit)), "!=", aurora.Cyan(numOpidsValue))
-		return gpcm.ErrSearch.GetMessage()
-	}
-
-	// Lookup profile ID using GPCM
-	uniqueNick, ok := gpcm.VerifyPlayerSearch(uint32(profileId), int32(sessionKey), gameName)
-	if !ok {
-		logging.Error(moduleName, "otherslist verify failed")
+	if len(opids) != numopids {
+		logging.Error(moduleName, "Mismatch opids length with numopids:", aurora.Cyan(len(opids)), "!=", aurora.Cyan(numopids))
 		return gpcm.ErrSearch.GetMessage()
 	}
 
 	var payload strings.Builder
 	payload.WriteString(`\otherslist\`)
-	for _, strOtherId := range opidsSplit {
-		payload.WriteString(`\o\` + strOtherId)
-		payload.WriteString(`\uniquenick\` + uniqueNick)
+	for _, opid := range opids {
+		friends, err := db.GetFriends(opid, false)
+		if err != nil {
+			logging.Error(moduleName, "Failed to get profile friend list:", err)
+			return gpcm.ErrSearch.GetMessage()
+		}
+		for _, friend := range friends {
+			if friend.ID != uint32(profileId) {
+				continue
+			}
+
+			// TODO: see if unauthorized friends should be skipped
+
+			profile, err := db.GetProfile(opid)
+			if err != nil {
+				logging.Error(moduleName, "Failed to get friend profile:", err)
+				return gpcm.ErrSearch.GetMessage()
+			}
+
+			payload.WriteString(`\o\` + strconv.Itoa(int(profile.ID)))
+			payload.WriteString(`\uniquenick\` + profile.UniqueNick())
+		}
 	}
 
 	payload.WriteString(`\oldone\\final\`)

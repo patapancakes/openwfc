@@ -2,6 +2,7 @@ package gpsp
 
 import (
 	"owfc/common"
+	"owfc/database"
 	"owfc/gpcm"
 	"owfc/logging"
 	"strings"
@@ -9,10 +10,18 @@ import (
 
 var ServerName = "gpsp"
 
+var db database.Connection
+
 func StartServer(reload bool) {
+	// Get config
+	config := common.GetConfig()
+
+	// Start SQL
+	db = database.Start(config)
 }
 
 func Shutdown() {
+	db.Close()
 }
 
 func NewConnection(index uint64, address string) {

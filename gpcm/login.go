@@ -191,11 +191,25 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 		panic(err)
 	}
 
-	friends, err := db.GetFriends(g.Profile.ID)
-	if err == nil {
-		mutex.Lock()
-		defer mutex.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
+	// send status for unauthorized outgoing friend requests
+	outgoing, err := db.GetFriends(g.Profile.ID, true)
+	if err == nil {
+		for _, friend := range outgoing {
+			if friend.Authorized {
+				continue
+			}
+
+			// TODO: see if it should send their online status
+			sendMessageToSessionBuffer(BuddyStatus, friend.ID, g, offlineMessage)
+		}
+	}
+
+	// send status for incoming friend requests / mutual friends
+	friends, err := db.GetFriends(g.Profile.ID, false)
+	if err == nil {
 		for _, friend := range friends {
 			if !friend.Authorized {
 				sendMessageToSessionBuffer(BuddyRequest, friend.ID, g, addFriendMessage)

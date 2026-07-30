@@ -72,13 +72,18 @@ func (g *GameSpySession) updateProfile(command common.GameSpyCommand) {
 	db.UpdateProfile(g.Profile)
 }
 
-func VerifyPlayerSearch(profileId uint32, sessionKey int32, gameName string) (string, bool) {
+func VerifySessionKey(profileId uint32, sessionKey int32) bool {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	if session, ok := sessions[profileId]; ok && session.LoggedIn && session.SessionKey == sessionKey && session.GameName == gameName {
-		return "000000000" + session.Profile.GsbrCode[:4] + "0000000", true
+	session, ok := sessions[profileId]
+	if !ok {
+		return false
 	}
 
-	return "", false
+	if !session.LoggedIn {
+		return false
+	}
+
+	return session.SessionKey == sessionKey
 }
