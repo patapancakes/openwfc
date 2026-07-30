@@ -10,8 +10,7 @@ import (
 )
 
 func (g *GameSpySession) getProfile(command common.GameSpyCommand) {
-	strProfileId := command.OtherValues["profileid"]
-	profileId, err := strconv.ParseUint(strProfileId, 10, 32)
+	profileId, err := strconv.Atoi(command.OtherValues["profileid"])
 	if err != nil {
 		// There was an error getting profile info.
 		g.replyError(ErrGetProfile)
@@ -38,47 +37,25 @@ func (g *GameSpySession) getProfile(command common.GameSpyCommand) {
 		}
 	}
 
-	if profile.ID == g.Profile.ID {
-		g.WriteBuffer += common.CreateGameSpyMessage(common.GameSpyCommand{
-			Command:      "pi",
-			CommandValue: "",
-			OtherValues: map[string]string{
-				"profileid":  command.OtherValues["profileid"],
-				"nick":       profile.UniqueNick(),
-				"userid":     strconv.FormatUint(uint64(profile.UserID), 10),
-				"email":      profile.Email(),
-				"sig":        common.RandomHexString(32),
-				"uniquenick": profile.UniqueNick(),
-				"firstname":  profile.FirstName,
-				"lastname":   profile.LastName,
-				"pid":        "11",
-				"lon":        "0.000000",
-				"lat":        "0.000000",
-				"loc":        locstring,
-				"id":         command.OtherValues["id"],
-			},
-		})
-	} else {
-		g.WriteBuffer += common.CreateGameSpyMessage(common.GameSpyCommand{
-			Command:      "pi",
-			CommandValue: "",
-			OtherValues: map[string]string{
-				"profileid":  command.OtherValues["profileid"],
-				"nick":       "000000000" + profile.GsbrCode[:4] + "0000000",
-				"userid":     "0",
-				"email":      "000000000" + profile.GsbrCode[:4] + "0000000" + "@nds",
-				"sig":        common.RandomHexString(32),
-				"uniquenick": "000000000" + profile.GsbrCode[:4] + "0000000",
-				"firstname":  profile.FirstName,
-				"lastname":   "000000000" + profile.GsbrCode[:4] + "0000000",
-				"pid":        "11",
-				"lon":        "0.000000",
-				"lat":        "0.000000",
-				"loc":        locstring,
-				"id":         command.OtherValues["id"],
-			},
-		})
-	}
+	g.WriteBuffer += common.CreateGameSpyMessage(common.GameSpyCommand{
+		Command:      "pi",
+		CommandValue: "",
+		OtherValues: map[string]string{
+			"profileid":  command.OtherValues["profileid"],
+			"nick":       profile.UniqueNick(),
+			"userid":     strconv.FormatUint(uint64(profile.UserID), 10),
+			"email":      profile.Email(),
+			"sig":        common.RandomHexString(32),
+			"uniquenick": profile.UniqueNick(),
+			"firstname":  profile.FirstName,
+			"lastname":   profile.LastName,
+			"pid":        "11",
+			"lon":        "0.000000",
+			"lat":        "0.000000",
+			"loc":        locstring,
+			"id":         command.OtherValues["id"],
+		},
+	})
 }
 
 func (g *GameSpySession) updateProfile(command common.GameSpyCommand) {
