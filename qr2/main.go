@@ -165,7 +165,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 			session.Authenticated = true
 			mutex.Unlock()
 
-			data := new(strings.Builder)
+			var data strings.Builder
 			for k, v := range session.Data {
 				if k == "gamename" || k == "statechanged" {
 					continue
@@ -175,10 +175,10 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 					data.WriteString(", ")
 				}
 
-				fmt.Fprintf(data, "%s: %s", k, v)
+				fmt.Fprintf(&data, "%s: %s", k, v)
 			}
 
-			logging.Notice(moduleName, "Server created:", aurora.Cyan(game.Name), "/", aurora.Cyan(data))
+			logging.Notice(moduleName, "Server created:", aurora.Cyan(game.Name), "/", aurora.Cyan(&data))
 			logging.Event("server_created", map[string]any{
 				"session_id": session.SessionID,
 				"data":       session.Data,
