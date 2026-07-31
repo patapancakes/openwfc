@@ -2,7 +2,7 @@
 -- Host:                         127.0.0.1
 -- Server version:               11.8.6-MariaDB-0+deb13u1 from Debian - -- Please help get to 10k stars at https://github.com/MariaDB/Server
 -- Server OS:                    debian-linux-gnu
--- HeidiSQL Version:             12.18.1.1
+-- HeidiSQL Version:             12.18.0.7304
 -- --------------------------------------------------------
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -18,6 +18,22 @@
 -- Dumping database structure for wfc
 CREATE DATABASE IF NOT EXISTS `wfc` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_uca1400_ai_ci */;
 USE `wfc`;
+
+-- Dumping structure for table wfc.dwc_rankings
+CREATE TABLE IF NOT EXISTS `dwc_rankings` (
+  `gamename` tinytext CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+  `pid` int(11) unsigned NOT NULL,
+  `region` int(11) unsigned NOT NULL,
+  `category` int(11) unsigned NOT NULL,
+  `score` int(11) NOT NULL,
+  `data` blob NOT NULL,
+  `updated` timestamp NOT NULL DEFAULT utc_timestamp(),
+  UNIQUE KEY `gamename_pid_region_category` (`gamename`,`pid`,`region`,`category`) USING HASH,
+  KEY `pid` (`pid`),
+  CONSTRAINT `FK_dwc_rankings_profiles` FOREIGN KEY (`pid`) REFERENCES `profiles` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+-- Data exporting was unselected.
 
 -- Dumping structure for table wfc.events
 CREATE TABLE IF NOT EXISTS `events` (
