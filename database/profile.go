@@ -8,10 +8,10 @@ import (
 )
 
 const (
-	InsertProfile    = `INSERT INTO profiles (user_id, gsbrcd) VALUES (?, ?) RETURNING id`
-	GetProfile       = `SELECT user_id, gsbrcd, firstname, lastname FROM profiles WHERE id = ?`
-	GetUserProfileID = `SELECT id FROM profiles WHERE user_id = ? AND gsbrcd = ?`
-	UpdateProfile    = `UPDATE profiles SET firstname = CASE WHEN ? THEN ? ELSE firstname END, lastname = CASE WHEN ? THEN ? ELSE lastname END WHERE id = ?`
+	insertProfile    = `INSERT INTO profiles (user_id, gsbrcd) VALUES (?, ?) RETURNING id`
+	getProfile       = `SELECT user_id, gsbrcd, firstname, lastname FROM profiles WHERE id = ?`
+	getUserProfileID = `SELECT id FROM profiles WHERE user_id = ? AND gsbrcd = ?`
+	updateProfile    = `UPDATE profiles SET firstname = CASE WHEN ? THEN ? ELSE firstname END, lastname = CASE WHEN ? THEN ? ELSE lastname END WHERE id = ?`
 )
 
 type Profile struct {
@@ -37,7 +37,7 @@ func (c *Connection) CreateProfile(userId uint64, gsbrcd string) (uint32, error)
 	}
 
 	var id uint32
-	err := c.pool.QueryRowContext(c.ctx, InsertProfile, profile.UserID, profile.GsbrCode).Scan(&id)
+	err := c.pool.QueryRowContext(c.ctx, insertProfile, profile.UserID, profile.GsbrCode).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -48,7 +48,7 @@ func (c *Connection) CreateProfile(userId uint64, gsbrcd string) (uint32, error)
 func (c *Connection) GetProfile(profileId uint32) (Profile, error) {
 	var profile Profile
 	var firstname sql.NullString
-	err := c.pool.QueryRowContext(c.ctx, GetProfile, profileId).Scan(&profile.UserID, &profile.GsbrCode, &firstname, &profile.LastName)
+	err := c.pool.QueryRowContext(c.ctx, getProfile, profileId).Scan(&profile.UserID, &profile.GsbrCode, &firstname, &profile.LastName)
 	if err != nil {
 		return Profile{}, err
 	}
@@ -60,7 +60,7 @@ func (c *Connection) GetProfile(profileId uint32) (Profile, error) {
 
 func (c *Connection) GetProfileID(userId uint64, gsbrcd string) (uint32, error) {
 	var id uint32
-	err := c.pool.QueryRowContext(c.ctx, GetUserProfileID, userId, gsbrcd).Scan(&id)
+	err := c.pool.QueryRowContext(c.ctx, getUserProfileID, userId, gsbrcd).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -69,7 +69,7 @@ func (c *Connection) GetProfileID(userId uint64, gsbrcd string) (uint32, error) 
 }
 
 func (c *Connection) UpdateProfile(profile Profile) error {
-	_, err := c.pool.ExecContext(c.ctx, UpdateProfile, profile.FirstName != "", profile.FirstName, profile.LastName != "", profile.LastName, profile.ID)
+	_, err := c.pool.ExecContext(c.ctx, updateProfile, profile.FirstName != "", profile.FirstName, profile.LastName != "", profile.LastName, profile.ID)
 	if err != nil {
 		return err
 	}

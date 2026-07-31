@@ -5,18 +5,18 @@ import (
 )
 
 const (
-	GetFriends = `
+	getFriends = `
 		SELECT f.sender, f.authorized, f.created
 		FROM friends AS f
 		LEFT JOIN friends AS r
 		ON r.sender = f.recipient
 		AND r.recipient = f.sender
 		WHERE f.recipient = ?`
-	GetFriendsOutgoing = `SELECT recipient, authorized, created FROM friends WHERE sender = ?`
-	GetFriendAuth      = `SELECT authorized FROM friends WHERE sender = ? AND recipient = ?`
-	SetFriendAuth      = `UPDATE friends SET authorized = ? WHERE sender = ? AND recipient = ?`
-	AddFriend          = `INSERT INTO friends (sender, recipient) VALUES (?, ?)`
-	RemoveFriend       = `DELETE FROM friends WHERE sender = ? AND recipient = ?`
+	getFriendsOutgoing = `SELECT recipient, authorized, created FROM friends WHERE sender = ?`
+	getFriendAuth      = `SELECT authorized FROM friends WHERE sender = ? AND recipient = ?`
+	setFriendAuth      = `UPDATE friends SET authorized = ? WHERE sender = ? AND recipient = ?`
+	addFriend          = `INSERT INTO friends (sender, recipient) VALUES (?, ?)`
+	removeFriend       = `DELETE FROM friends WHERE sender = ? AND recipient = ?`
 )
 
 type FriendInfo struct {
@@ -26,9 +26,9 @@ type FriendInfo struct {
 }
 
 func (c *Connection) GetFriends(profileId uint32, outgoing bool) ([]FriendInfo, error) {
-	q := GetFriends
+	q := getFriends
 	if outgoing {
-		q = GetFriendsOutgoing
+		q = getFriendsOutgoing
 	}
 
 	rows, err := c.pool.QueryContext(c.ctx, q, profileId)
@@ -54,7 +54,7 @@ func (c *Connection) GetFriends(profileId uint32, outgoing bool) ([]FriendInfo, 
 
 func (c *Connection) GetFriendAuth(sender uint32, recipient uint32) (bool, error) {
 	var authorized bool
-	err := c.pool.QueryRowContext(c.ctx, GetFriendAuth, sender, recipient).Scan(&authorized)
+	err := c.pool.QueryRowContext(c.ctx, getFriendAuth, sender, recipient).Scan(&authorized)
 	if err != nil {
 		return false, err
 	}
@@ -63,7 +63,7 @@ func (c *Connection) GetFriendAuth(sender uint32, recipient uint32) (bool, error
 }
 
 func (c *Connection) AuthFriend(sender uint32, recipient uint32) error {
-	_, err := c.pool.ExecContext(c.ctx, SetFriendAuth, true, sender, recipient)
+	_, err := c.pool.ExecContext(c.ctx, setFriendAuth, true, sender, recipient)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func (c *Connection) AuthFriend(sender uint32, recipient uint32) error {
 }
 
 func (c *Connection) AddFriend(sender uint32, recipient uint32) error {
-	_, err := c.pool.ExecContext(c.ctx, AddFriend, sender, recipient)
+	_, err := c.pool.ExecContext(c.ctx, addFriend, sender, recipient)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (c *Connection) AddFriend(sender uint32, recipient uint32) error {
 }
 
 func (c *Connection) RemoveFriend(sender uint32, recipient uint32) (bool, error) {
-	res, err := c.pool.ExecContext(c.ctx, RemoveFriend, sender, recipient)
+	res, err := c.pool.ExecContext(c.ctx, removeFriend, sender, recipient)
 	if err != nil {
 		return false, err
 	}

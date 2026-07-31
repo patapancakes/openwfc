@@ -8,17 +8,17 @@ import (
 )
 
 const (
-	queryGsGetPersistData = `SELECT data, modified FROM gamestats_persistdata WHERE pid = ? AND dindex = ? AND ptype = ?`
-	queryGsSetPersistData = `INSERT INTO gamestats_persistdata (pid, ptype, dindex, data) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data), modified = UTC_TIMESTAMP RETURNING modified`
+	getPersistData = `SELECT data, modified FROM gamestats_persistdata WHERE pid = ? AND dindex = ? AND ptype = ?`
+	setPersistData = `INSERT INTO gamestats_persistdata (pid, ptype, dindex, data) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data), modified = UTC_TIMESTAMP RETURNING modified`
 )
 
 func (c *Connection) GetGameStatsPersistData(profileId uint32, ptype int, dindex int) (data string, modified time.Time, err error) {
-	err = c.pool.QueryRowContext(c.ctx, queryGsGetPersistData, profileId, ptype, dindex).Scan(&data, &modified)
+	err = c.pool.QueryRowContext(c.ctx, getPersistData, profileId, ptype, dindex).Scan(&data, &modified)
 	return
 }
 
 func (c *Connection) SetGameStatsPersistData(profileId uint32, ptype int, dindex int, data string) (modified time.Time, err error) {
-	err = c.pool.QueryRowContext(c.ctx, queryGsSetPersistData, profileId, ptype, dindex, data).Scan(&modified)
+	err = c.pool.QueryRowContext(c.ctx, setPersistData, profileId, ptype, dindex, data).Scan(&modified)
 	return
 }
 

@@ -6,12 +6,12 @@ import (
 )
 
 const (
-	InsertUser          = `INSERT INTO users (id, unitcd, macadr, passwd, csnum) VALUES (?, ?, ?, ?, ?)`
-	GetUser             = `SELECT unitcd, macadr, passwd, csnum, banned FROM users WHERE id = ?`
-	UpdateUserName      = `UPDATE users SET name = ? WHERE id = ?`
-	IsUserIDInUse       = `SELECT EXISTS(SELECT 1 FROM users WHERE id = ?)`
-	IsMACInUse          = `SELECT EXISTS(SELECT 1 FROM users WHERE macadr = ?)`
-	IsSerialNumberInUse = `SELECT EXISTS(SELECT 1 FROM users WHERE csnum = ?)`
+	insertUser         = `INSERT INTO users (id, unitcd, macadr, passwd, csnum) VALUES (?, ?, ?, ?, ?)`
+	getUser            = `SELECT unitcd, macadr, passwd, csnum, banned FROM users WHERE id = ?`
+	updateUserName     = `UPDATE users SET name = ? WHERE id = ?`
+	isUserIDInUse      = `SELECT EXISTS(SELECT 1 FROM users WHERE id = ?)`
+	isMACInUse         = `SELECT EXISTS(SELECT 1 FROM users WHERE macadr = ?)`
+	isSerialNumerInUse = `SELECT EXISTS(SELECT 1 FROM users WHERE csnum = ?)`
 )
 
 type User struct {
@@ -37,7 +37,7 @@ var (
 func (c *Connection) CreateUser(user User) error {
 	var exists bool
 
-	err := c.pool.QueryRowContext(c.ctx, IsUserIDInUse, user.ID).Scan(&exists)
+	err := c.pool.QueryRowContext(c.ctx, isUserIDInUse, user.ID).Scan(&exists)
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func (c *Connection) CreateUser(user User) error {
 		return ErrUserIDInUse
 	}
 
-	err = c.pool.QueryRowContext(c.ctx, IsMACInUse, user.MacAddress).Scan(&exists)
+	err = c.pool.QueryRowContext(c.ctx, isMACInUse, user.MacAddress).Scan(&exists)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (c *Connection) CreateUser(user User) error {
 	}
 
 	if user.IsWii() {
-		err = c.pool.QueryRowContext(c.ctx, IsSerialNumberInUse, user.SerialNumber).Scan(&exists)
+		err = c.pool.QueryRowContext(c.ctx, isSerialNumerInUse, user.SerialNumber).Scan(&exists)
 		if err != nil {
 			return err
 		}
@@ -71,7 +71,7 @@ func (c *Connection) CreateUser(user User) error {
 		serial = &user.SerialNumber
 	}
 
-	_, err = c.pool.ExecContext(c.ctx, InsertUser, user.ID, user.UnitCode, user.MacAddress, password, serial)
+	_, err = c.pool.ExecContext(c.ctx, insertUser, user.ID, user.UnitCode, user.MacAddress, password, serial)
 	return err
 }
 
@@ -79,7 +79,7 @@ func (c *Connection) GetUser(userId uint64) (User, bool) {
 	var user User
 	var password sql.NullInt16
 	var serial sql.NullString
-	err := c.pool.QueryRowContext(c.ctx, GetUser, userId).Scan(&user.UnitCode, &user.MacAddress, &password, &serial, &user.Banned)
+	err := c.pool.QueryRowContext(c.ctx, getUser, userId).Scan(&user.UnitCode, &user.MacAddress, &password, &serial, &user.Banned)
 	if err != nil {
 		return User{}, false
 	}
@@ -92,7 +92,7 @@ func (c *Connection) GetUser(userId uint64) (User, bool) {
 }
 
 func (c *Connection) UpdateUserName(userId uint64, name string) error {
-	_, err := c.pool.ExecContext(c.ctx, UpdateUserName, name, userId)
+	_, err := c.pool.ExecContext(c.ctx, updateUserName, name, userId)
 	if err != nil {
 		return err
 	}
