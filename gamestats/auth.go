@@ -13,8 +13,8 @@ import (
 )
 
 func (g *GameStatsSession) auth(command common.GameSpyCommand) {
-	game := common.GetGameInfoByName(command.OtherValues["gamename"])
-	if game == nil {
+	game, ok := common.GetGameInfoByName(command.OtherValues["gamename"])
+	if !ok {
 		g.replyError(gpcm.ErrDatabase)
 		return
 	}

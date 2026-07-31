@@ -227,8 +227,8 @@ func handleStorageRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func getRequestIdentity(moduleName string, request StorageRequestCommon) (uint32, common.GameInfo, Result) {
-	gameInfo := common.GetGameInfoByID(int(request.GameID))
-	if gameInfo == nil {
+	gameInfo, ok := common.GetGameInfoByID(int(request.GameID))
+	if !ok {
 		logging.Error(moduleName, "Invalid game ID:", aurora.Cyan(request.GameID))
 		return 0, common.GameInfo{}, ResultDatabaseUnavailable
 	}
@@ -244,7 +244,7 @@ func getRequestIdentity(moduleName string, request StorageRequestCommon) (uint32
 		return 0, common.GameInfo{}, ResultLoginTicketInvalid
 	}
 
-	return loginTicket.ProfileID, *gameInfo, ResultSuccess
+	return loginTicket.ProfileID, gameInfo, ResultSuccess
 }
 
 func createRecord(moduleName string, profileId uint32, gameInfo common.GameInfo, request StorageRequestCommon) StorageResponseBody {
@@ -292,7 +292,7 @@ func createRecord(moduleName string, profileId uint32, gameInfo common.GameInfo,
 		}}
 	}
 
-	record.GameId = gameInfo.GameID
+	record.GameId = gameInfo.ID
 	record.TableId = request.TableID
 	record.RecordId = 0
 	record.OwnerId = int32(profileId)
@@ -336,7 +336,7 @@ func getMyRecords(moduleName string, profileId uint32, gameInfo common.GameInfo,
 		}}
 	}
 
-	records, err := db.GetSakeRecords(gameInfo.GameID, []int32{int32(profileId)}, request.TableID, nil, request.Fields.String, request.Filter)
+	records, err := db.GetSakeRecords(gameInfo.ID, []int32{int32(profileId)}, request.TableID, nil, request.Fields.String, request.Filter)
 	if err != nil {
 		logging.Error(moduleName, "Failed to get sake records from the database:", err)
 		if err == sql.ErrNoRows {
@@ -392,7 +392,7 @@ func updateRecord(moduleName string, profileId uint32, gameInfo common.GameInfo,
 		}}
 	}
 
-	record.GameId = gameInfo.GameID
+	record.GameId = gameInfo.ID
 	record.TableId = request.TableID
 	record.RecordId = int32(request.RecordID)
 	record.OwnerId = int32(profileId)
@@ -454,7 +454,7 @@ func searchForRecords(moduleName string, profileId uint32, gameInfo common.GameI
 		}
 
 		var err error
-		records, err = db.GetSakeRecords(gameInfo.GameID, ownerIds, request.TableID, nil, request.Fields.String, request.Filter)
+		records, err = db.GetSakeRecords(gameInfo.ID, ownerIds, request.TableID, nil, request.Fields.String, request.Filter)
 		if err != nil {
 			logging.Error(moduleName, "Failed to get sake records from the database:", err)
 			return StorageResponseBody{SearchForRecordsResponse: &SearchForRecordsResponse{

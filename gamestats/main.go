@@ -23,7 +23,7 @@ type GameStatsSession struct {
 
 	SessionKey int32
 	GameName   string
-	gameInfo   *common.GameInfo
+	gameInfo   common.GameInfo
 
 	Authenticated bool
 	LoginID       int
@@ -76,8 +76,9 @@ func StartServer(reload bool) {
 		common.ShouldNotError(decoder.Decode(&sessionsByConnIndex))
 
 		for _, session := range sessionsByConnIndex {
-			session.gameInfo = common.GetGameInfoByName(session.GameName)
-			if session.gameInfo == nil {
+			var ok bool
+			session.gameInfo, ok = common.GetGameInfoByName(session.GameName)
+			if !ok {
 				logging.Error(session.ModuleName, "Unknown game from reload:", aurora.Cyan(session.GameName))
 				// Force close the session now to prevent a panic later
 				_ = common.CloseConnection(ServerName, session.ConnIndex)
@@ -112,7 +113,6 @@ func NewConnection(index uint64, address string) {
 		Challenge:  common.RandomString(10),
 
 		SessionKey: 0,
-		gameInfo:   nil,
 
 		Authenticated: false,
 		LoginID:       0,

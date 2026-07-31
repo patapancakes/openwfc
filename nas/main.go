@@ -76,7 +76,7 @@ func StartServer(reload bool) {
 
 	sake.RegisterHandlers(sakeMux)
 	race.RegisterHandlers(raceMux)
-	gamestatsMux.HandleFunc("/", gamestats.HandleWebRequest)
+	gamestatsMux.HandleFunc("/{gamename}/{endpoint...}", gamestats.HandleWebRequest)
 
 	http.HandleFunc("/", handleUnknown)
 	authMux.HandleFunc("/", handleUnknown)

@@ -118,8 +118,8 @@ func handleServerListRequest(moduleName string, connIndex uint64, address string
 
 	logging.Info(moduleName, "Server list:", aurora.Cyan(queryGame), "/", aurora.Cyan(filter[:min(len(filter), 200)]))
 
-	gameInfo := common.GetGameInfoByName(gameName)
-	if gameInfo == nil {
+	gameInfo, ok := common.GetGameInfoByName(gameName)
+	if !ok {
 		// Game doesn't exist in the game list.
 		return
 	}

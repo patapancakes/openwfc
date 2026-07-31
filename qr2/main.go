@@ -142,8 +142,8 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 
 		mutex.Lock()
 		if session.Challenge != "" {
-			game := common.GetGameInfoByName(session.Data["gamename"])
-			if game == nil {
+			game, ok := common.GetGameInfoByName(session.Data["gamename"])
+			if !ok {
 				mutex.Unlock()
 				logging.Error(moduleName, "Unknown game:", aurora.Cyan(session.Data["gamename"]))
 				return
