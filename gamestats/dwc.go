@@ -21,24 +21,6 @@ type DwcRankingGetHeader struct {
 	ModeLength uint32
 }
 
-type DwcRankingGetOrder struct {
-	Sort  uint32
-	Since uint32
-}
-
-type DwcRankingGetTopNear struct {
-	Sort  uint32
-	Limit uint32
-	Since uint32
-}
-
-type DwcRankingGetFriends struct {
-	Sort    uint32
-	Limit   uint32
-	Since   uint32
-	Friends [64]uint32
-}
-
 func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []byte {
 	challenge := makeDwcChallenge(r.PathValue("gamename"), r.PathValue("endpoint"), r.FormValue("pid"))
 	if r.FormValue("hash") == "" {
@@ -66,41 +48,24 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 		return nil
 	}
 
-	// TODO: would this be better done manually?
-	var body any
+	var sort, since, limit uint32
+	var friends []uint32
 	switch header.Mode {
 	case common.DwcRankOrder:
-		body = &DwcRankingGetOrder{}
+		binary.Read(reader, binary.LittleEndian, &sort)
+		binary.Read(reader, binary.LittleEndian, &since)
 	case common.DwcRankTop, common.DwcRankNear, common.DwcRankNearHigh, common.DwcRankNearLow:
-		body = &DwcRankingGetTopNear{}
+		binary.Read(reader, binary.LittleEndian, &sort)
+		binary.Read(reader, binary.LittleEndian, &limit)
+		binary.Read(reader, binary.LittleEndian, &since)
 	case common.DwcRankFriends:
-		body = &DwcRankingGetFriends{}
+		binary.Read(reader, binary.LittleEndian, &sort)
+		binary.Read(reader, binary.LittleEndian, &limit)
+		binary.Read(reader, binary.LittleEndian, &since)
+		binary.Read(reader, binary.LittleEndian, &friends)
 	default:
 		logging.Error(moduleName, "Invalid mode")
 		return nil
-	}
-
-	err = binary.Read(reader, binary.LittleEndian, body)
-	if err != nil {
-		logging.Error(moduleName, "Invalid body:", err)
-		return nil
-	}
-
-	var sort, since, limit int
-	var friends []uint32
-	switch body := body.(type) {
-	case *DwcRankingGetOrder:
-		sort = int(body.Sort)
-		since = int(body.Since)
-	case *DwcRankingGetTopNear:
-		sort = int(body.Sort)
-		limit = int(body.Limit)
-		since = int(body.Since)
-	case *DwcRankingGetFriends:
-		sort = int(body.Sort)
-		limit = int(body.Limit)
-		since = int(body.Since)
-		friends = body.Friends[:]
 	}
 
 	// clean up / validate
@@ -115,7 +80,7 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 	}
 	friends = slices.DeleteFunc(friends, func(pid uint32) bool { return pid == 0 })
 
-	entries, total, err := db.GetDwcRankings(game.Name, header.ProfileID, int(header.Region), int(header.Category), int(header.Mode), desc, sinceTime, limit, friends)
+	entries, total, err := db.GetDwcRankings(game.Name, header.ProfileID, int(header.Region), int(header.Category), int(header.Mode), desc, sinceTime, int(limit), friends)
 	if err != nil {
 		logging.Error(moduleName, "Failed to get rankings:", err)
 		return nil
