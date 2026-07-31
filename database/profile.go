@@ -100,6 +100,8 @@ func (c *Connection) SearchProfile(filter map[string]string) ([]uint32, error) {
 		return nil, err
 	}
 
+	defer rows.Close()
+
 	var ids []uint32
 	for rows.Next() {
 		var id uint32
