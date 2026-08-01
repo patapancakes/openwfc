@@ -9,12 +9,12 @@ import (
 	"owfc/common"
 	"owfc/logging"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type DwcRankingGetHeader struct {
-	ProfileID  uint32
 	Region     uint32
 	Category   uint32
 	Mode       uint32
@@ -22,11 +22,11 @@ type DwcRankingGetHeader struct {
 }
 
 func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []byte {
-	challenge := makeDwcChallenge(r.PathValue("gamename"), r.PathValue("endpoint"), r.FormValue("pid"))
+	token := makeDwcToken(r.PathValue("gamename"), r.PathValue("endpoint"), r.FormValue("pid"))
 	if r.FormValue("hash") == "" {
-		return []byte(challenge)
+		return []byte(token)
 	}
-	if !verifyDwcHash(game.Stats.Key, challenge, r.FormValue("hash")) {
+	if !verifyDwcHash(game.Stats.Key, token, r.FormValue("hash")) {
 		logging.Warn(moduleName, "Invalid hash")
 		return nil
 	}
@@ -37,9 +37,18 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 		return nil
 	}
 
-	data = decryptDwc(game.Stats, data)
+	pid, data := decryptDwc(game.Stats, data)
+	if strconv.Itoa(int(pid)) != r.FormValue("pid") {
+		logging.Error(moduleName, "Profile ID mismatch:", err)
+		return nil
+	}
 
 	reader := bytes.NewReader(data)
+
+	// skip length value
+	if strings.HasSuffix(r.PathValue("endpoint"), "get2.asp") {
+		reader.Seek(4, io.SeekCurrent)
+	}
 
 	var header DwcRankingGetHeader
 	err = binary.Read(reader, binary.LittleEndian, &header)
@@ -80,7 +89,7 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 	}
 	friends = slices.DeleteFunc(friends, func(pid uint32) bool { return pid == 0 })
 
-	entries, total, err := db.GetDwcRankings(game.Name, header.ProfileID, int(header.Region), int(header.Category), int(header.Mode), desc, sinceTime, int(limit), friends)
+	entries, total, err := db.GetDwcRankings(game.Name, pid, int(header.Region), int(header.Category), int(header.Mode), desc, sinceTime, int(limit), friends)
 	if err != nil {
 		logging.Error(moduleName, "Failed to get rankings:", err)
 		return nil
@@ -130,19 +139,18 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 }
 
 type DwcRankingPutHeader struct {
-	ProfileID uint32
-	Region    uint32
-	Category  uint32
-	Score     int32
-	DataLen   uint32
+	Region   uint32
+	Category uint32
+	Score    int32
+	DataLen  uint32
 }
 
 func handleDwcPut(r *http.Request, game common.GameInfo, moduleName string) []byte {
-	challenge := makeDwcChallenge(r.PathValue("gamename"), r.PathValue("endpoint"), r.FormValue("pid"))
+	token := makeDwcToken(r.PathValue("gamename"), r.PathValue("endpoint"), r.FormValue("pid"))
 	if r.FormValue("hash") == "" {
-		return []byte(challenge)
+		return []byte(token)
 	}
-	if !verifyDwcHash(game.Stats.Key, challenge, r.FormValue("hash")) {
+	if !verifyDwcHash(game.Stats.Key, token, r.FormValue("hash")) {
 		logging.Warn(moduleName, "Invalid hash")
 		return nil
 	}
@@ -153,28 +161,24 @@ func handleDwcPut(r *http.Request, game common.GameInfo, moduleName string) []by
 		return nil
 	}
 
-	data = decryptDwc(game.Stats, data)
+	pid, data := decryptDwc(game.Stats, data)
+	if strconv.Itoa(int(pid)) != r.FormValue("pid") {
+		logging.Error(moduleName, "Profile ID mismatch:", err)
+		return nil
+	}
 
 	reader := bytes.NewReader(data)
+
+	// skip length value
+	if strings.HasSuffix(r.PathValue("endpoint"), "put2.asp") {
+		reader.Seek(4, io.SeekCurrent)
+	}
 
 	var header DwcRankingPutHeader
 	err = binary.Read(reader, binary.LittleEndian, &header)
 	if err != nil {
 		logging.Error(moduleName, "Invalid header:", err)
 		return nil
-	}
-
-	// HACK: put2 only has an extra length value, just shift them
-	if strings.HasSuffix(r.PathValue("endpoint"), "put2.asp") {
-		header.Region = header.Category
-		header.Category = uint32(header.Score)
-		header.Score = int32(header.DataLen)
-
-		err := binary.Read(reader, binary.LittleEndian, &header.DataLen)
-		if err != nil {
-			logging.Error(moduleName, "Invalid header:", err)
-			return nil
-		}
 	}
 
 	body := make([]byte, header.DataLen)
@@ -184,7 +188,7 @@ func handleDwcPut(r *http.Request, game common.GameInfo, moduleName string) []by
 		return nil
 	}
 
-	err = db.InsertDwcRanking(game.Name, header.ProfileID, int(header.Region), int(header.Category), int(header.Score), body)
+	err = db.InsertDwcRanking(game.Name, pid, int(header.Region), int(header.Category), int(header.Score), body)
 	if err != nil {
 		logging.Error(moduleName, "Failed to insert DWC ranking:", err)
 		return nil

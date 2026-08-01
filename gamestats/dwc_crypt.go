@@ -10,7 +10,7 @@ import (
 	"slices"
 )
 
-func makeDwcChallenge(gamename string, endpoint string, pid string) string {
+func makeDwcToken(gamename string, endpoint string, pid string) string {
 	// base64-encoded SHA-256 because the result needs to be at least 32 chars
 	h := sha256.New()
 	h.Write([]byte(webSalt))
@@ -21,10 +21,10 @@ func makeDwcChallenge(gamename string, endpoint string, pid string) string {
 	return base64.URLEncoding.EncodeToString(h.Sum(nil))[:32]
 }
 
-func verifyDwcHash(key string, challenge string, hash string) bool {
+func verifyDwcHash(key string, token string, hash string) bool {
 	h := sha1.New()
 	h.Write([]byte(key))
-	h.Write([]byte(challenge))
+	h.Write([]byte(token))
 
 	return hex.EncodeToString(h.Sum(nil)) == hash
 }
@@ -38,9 +38,9 @@ func makeDwcProof(key string, data []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func decryptDwc(keys common.StatsInfo, data []byte) []byte {
+func decryptDwc(keys common.StatsInfo, data []byte) (uint32, []byte) {
 	seed := binary.BigEndian.Uint32(data[:4])
-	seed ^= keys.ChecksumSecret
+	seed ^= keys.ChecksumMask
 	seed &= 0xFFFF
 	seed |= seed << 16
 
@@ -50,5 +50,8 @@ func decryptDwc(keys common.StatsInfo, data []byte) []byte {
 		decoded[i] ^= byte(seed >> 16)
 	}
 
-	return decoded
+	// pid is part of the encryption header
+	// return it and strip from the data
+
+	return binary.LittleEndian.Uint32(decoded), decoded[4:]
 }

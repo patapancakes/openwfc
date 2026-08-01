@@ -19,11 +19,11 @@ type GameInfo struct {
 }
 
 type StatsInfo struct {
-	Key            string
-	Multiplier     uint32
-	Increment      uint32
-	Modulus        uint32
-	ChecksumSecret uint32
+	Key          string
+	Multiplier   uint32
+	Increment    uint32
+	Modulus      uint32
+	ChecksumMask uint32
 }
 
 var (
@@ -151,7 +151,7 @@ func ReadGameList() {
 				panic(err)
 			}
 
-			game.Stats.ChecksumSecret = uint32(value)
+			game.Stats.ChecksumMask = uint32(value)
 		}
 
 		gameList = append(gameList, game)
