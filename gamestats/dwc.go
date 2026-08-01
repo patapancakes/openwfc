@@ -10,7 +10,6 @@ import (
 	"owfc/logging"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -37,18 +36,13 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 		return nil
 	}
 
-	pid, data := decryptDwc(game.Stats, data)
+	pid, data, needsProof := decryptDwc(game.Stats, data)
 	if strconv.Itoa(int(pid)) != r.FormValue("pid") {
-		logging.Error(moduleName, "Profile ID mismatch:", err)
+		logging.Error(moduleName, "Profile ID mismatch")
 		return nil
 	}
 
 	reader := bytes.NewReader(data)
-
-	// skip length value
-	if strings.HasSuffix(r.PathValue("endpoint"), "get2.asp") {
-		reader.Seek(4, io.SeekCurrent)
-	}
 
 	var header DwcRankingGetHeader
 	err = binary.Read(reader, binary.LittleEndian, &header)
@@ -130,8 +124,7 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 	// write the body
 	io.Copy(&resp, &respBody)
 
-	// write proof if v2
-	if strings.HasSuffix(r.PathValue("endpoint"), "get2.asp") {
+	if needsProof {
 		resp.Write([]byte(makeDwcProof(game.Stats.Key, resp.Bytes())))
 	}
 
@@ -161,18 +154,13 @@ func handleDwcPut(r *http.Request, game common.GameInfo, moduleName string) []by
 		return nil
 	}
 
-	pid, data := decryptDwc(game.Stats, data)
+	pid, data, needsProof := decryptDwc(game.Stats, data)
 	if strconv.Itoa(int(pid)) != r.FormValue("pid") {
-		logging.Error(moduleName, "Profile ID mismatch:", err)
+		logging.Error(moduleName, "Profile ID mismatch")
 		return nil
 	}
 
 	reader := bytes.NewReader(data)
-
-	// skip length value
-	if strings.HasSuffix(r.PathValue("endpoint"), "put2.asp") {
-		reader.Seek(4, io.SeekCurrent)
-	}
 
 	var header DwcRankingPutHeader
 	err = binary.Read(reader, binary.LittleEndian, &header)
@@ -196,9 +184,7 @@ func handleDwcPut(r *http.Request, game common.GameInfo, moduleName string) []by
 
 	response := []byte("done")
 
-	// no captures of how v1 replied, assume it acts like get
-	// write proof if v2
-	if strings.HasSuffix(r.PathValue("endpoint"), "put2.asp") {
+	if needsProof {
 		response = append([]byte(makeDwcProof(game.Stats.Key, response)), response...)
 	}
 

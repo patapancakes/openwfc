@@ -38,9 +38,16 @@ func makeDwcProof(key string, data []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func decryptDwc(keys common.StatsInfo, data []byte) (uint32, []byte) {
-	seed := binary.BigEndian.Uint32(data[:4])
-	seed ^= keys.ChecksumMask
+func decryptDwc(keys common.StatsInfo, data []byte) (uint32, []byte, bool) {
+	// not encrypted
+	if len(data) < 8 {
+		return 0, data, false
+	}
+
+	checksum := binary.BigEndian.Uint32(data[:4])
+	checksum ^= keys.ChecksumMask
+
+	seed := checksum
 	seed &= 0xFFFF
 	seed |= seed << 16
 
@@ -50,8 +57,21 @@ func decryptDwc(keys common.StatsInfo, data []byte) (uint32, []byte) {
 		decoded[i] ^= byte(seed >> 16)
 	}
 
-	// pid is part of the encryption header
-	// return it and strip from the data
+	var sum uint32
+	for _, b := range decoded {
+		sum += uint32(b)
+	}
+	if sum != checksum {
+		return 0, data, false
+	}
 
-	return binary.LittleEndian.Uint32(decoded), decoded[4:]
+	pid := binary.LittleEndian.Uint32(decoded[:4])
+
+	// check for new type
+	if len(decoded) >= 8 && int(binary.LittleEndian.Uint32(decoded[4:])) == len(decoded[8:]) {
+		return pid, decoded[8:], true
+	}
+
+	// old type
+	return pid, decoded[4:], false
 }
