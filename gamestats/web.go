@@ -23,9 +23,9 @@ func HandleWebRequest(w http.ResponseWriter, r *http.Request) {
 	switch r.PathValue("endpoint") {
 	// DWC Rankings SDK endpoints
 	case "web/client/get.asp", "web/client/get2.asp":
-		response = handleDwcGet(r, game, moduleName)
+		response = handleDwc(dwcRankGet, r, game, moduleName)
 	case "web/client/put.asp", "web/client/put2.asp":
-		response = handleDwcPut(r, game, moduleName)
+		response = handleDwc(dwcRankPut, r, game, moduleName)
 
 	default:
 		logging.Warn(moduleName, "Unhandled path:", aurora.Cyan(r.PathValue("endpoint")))

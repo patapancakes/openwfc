@@ -38,10 +38,10 @@ func makeDwcProof(key string, data []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func decryptDwc(keys common.StatsInfo, data []byte) (uint32, []byte, bool) {
-	// not encrypted
+func decryptDwc(keys common.StatsInfo, data []byte) (uint32, []byte, bool, error) {
+	// data too short (not encrypted?)
 	if len(data) < 8 {
-		return 0, data, false
+		return 0, nil, false, ErrBadLength
 	}
 
 	checksum := binary.BigEndian.Uint32(data[:4])
@@ -62,16 +62,16 @@ func decryptDwc(keys common.StatsInfo, data []byte) (uint32, []byte, bool) {
 		sum += uint32(b)
 	}
 	if sum != checksum {
-		return 0, data, false
+		return 0, nil, false, ErrBadChecksum
 	}
 
 	pid := binary.LittleEndian.Uint32(decoded[:4])
 
 	// check for new type
 	if len(decoded) >= 8 && int(binary.LittleEndian.Uint32(decoded[4:])) == len(decoded[8:]) {
-		return pid, decoded[8:], true
+		return pid, decoded[8:], true, nil
 	}
 
 	// old type
-	return pid, decoded[4:], false
+	return pid, decoded[4:], false, nil
 }

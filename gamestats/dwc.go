@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net/http"
 	"owfc/common"
@@ -13,21 +14,29 @@ import (
 	"time"
 )
 
-type DwcRankingGetHeader struct {
-	Region     uint32
-	Category   uint32
-	Mode       uint32
-	ModeLength uint32
-}
+var (
+	ErrBadChecksum = errors.New("error: check sum      ")
+	ErrBadPID      = errors.New("error: pid            ")
+	ErrBadLength   = errors.New("error: data length    ")
+	ErrNoToken     = errors.New("error: token not found")
+	ErrBadToken    = errors.New("error: token expired  ")
+	ErrBadHash     = errors.New("error: incorrect hash ")
+)
 
-func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []byte {
+type DwcHandler func(game common.GameInfo, pid uint32, data []byte, moduleName string) []byte
+
+func handleDwc(handler DwcHandler, r *http.Request, game common.GameInfo, moduleName string) []byte {
+	if r.FormValue("hash") == "" && r.FormValue("data") != "" {
+		return []byte(ErrNoToken.Error())
+	}
+
 	token := makeDwcToken(r.PathValue("gamename"), r.PathValue("endpoint"), r.FormValue("pid"))
 	if r.FormValue("hash") == "" {
 		return []byte(token)
 	}
 	if !verifyDwcHash(game.Stats.Key, token, r.FormValue("hash")) {
 		logging.Warn(moduleName, "Invalid hash")
-		return nil
+		return []byte(ErrBadHash.Error())
 	}
 
 	data, err := base64.URLEncoding.DecodeString(r.FormValue("data"))
@@ -36,16 +45,36 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 		return nil
 	}
 
-	pid, data, needsProof := decryptDwc(game.Stats, data)
+	pid, data, needsProof, err := decryptDwc(game.Stats, data)
+	if err != nil {
+		return []byte(err.Error())
+	}
 	if strconv.Itoa(int(pid)) != r.FormValue("pid") {
 		logging.Error(moduleName, "Profile ID mismatch")
-		return nil
+		return []byte(ErrBadPID.Error())
 	}
 
+	response := handler(game, pid, data, moduleName)
+
+	if needsProof {
+		response = append(response, []byte(makeDwcProof(game.Stats.Key, response))...)
+	}
+
+	return response
+}
+
+type DwcRankingGetHeader struct {
+	Region     uint32
+	Category   uint32
+	Mode       uint32
+	ModeLength uint32
+}
+
+func dwcRankGet(game common.GameInfo, pid uint32, data []byte, moduleName string) []byte {
 	reader := bytes.NewReader(data)
 
 	var header DwcRankingGetHeader
-	err = binary.Read(reader, binary.LittleEndian, &header)
+	err := binary.Read(reader, binary.LittleEndian, &header)
 	if err != nil {
 		logging.Error(moduleName, "Invalid header:", err)
 		return nil
@@ -124,10 +153,6 @@ func handleDwcGet(r *http.Request, game common.GameInfo, moduleName string) []by
 	// write the body
 	io.Copy(&resp, &respBody)
 
-	if needsProof {
-		resp.Write([]byte(makeDwcProof(game.Stats.Key, resp.Bytes())))
-	}
-
 	return resp.Bytes()
 }
 
@@ -138,32 +163,11 @@ type DwcRankingPutHeader struct {
 	DataLen  uint32
 }
 
-func handleDwcPut(r *http.Request, game common.GameInfo, moduleName string) []byte {
-	token := makeDwcToken(r.PathValue("gamename"), r.PathValue("endpoint"), r.FormValue("pid"))
-	if r.FormValue("hash") == "" {
-		return []byte(token)
-	}
-	if !verifyDwcHash(game.Stats.Key, token, r.FormValue("hash")) {
-		logging.Warn(moduleName, "Invalid hash")
-		return nil
-	}
-
-	data, err := base64.URLEncoding.DecodeString(r.FormValue("data"))
-	if err != nil {
-		logging.Error(moduleName, "Invalid data:", err)
-		return nil
-	}
-
-	pid, data, needsProof := decryptDwc(game.Stats, data)
-	if strconv.Itoa(int(pid)) != r.FormValue("pid") {
-		logging.Error(moduleName, "Profile ID mismatch")
-		return nil
-	}
-
+func dwcRankPut(game common.GameInfo, pid uint32, data []byte, moduleName string) []byte {
 	reader := bytes.NewReader(data)
 
 	var header DwcRankingPutHeader
-	err = binary.Read(reader, binary.LittleEndian, &header)
+	err := binary.Read(reader, binary.LittleEndian, &header)
 	if err != nil {
 		logging.Error(moduleName, "Invalid header:", err)
 		return nil
@@ -182,11 +186,5 @@ func handleDwcPut(r *http.Request, game common.GameInfo, moduleName string) []by
 		return nil
 	}
 
-	response := []byte("done")
-
-	if needsProof {
-		response = append([]byte(makeDwcProof(game.Stats.Key, response)), response...)
-	}
-
-	return response
+	return []byte("done")
 }
