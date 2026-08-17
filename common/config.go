@@ -26,15 +26,9 @@ type Config struct {
 	BackendAddress         string `xml:"backendAddress"`
 	BackendFrontendAddress string `xml:"backendFrontendAddress"`
 
-	EnableHTTPS           bool  `xml:"enableHttps"`
-	EnableHTTPSExploitWii *bool `xml:"enableHttpsExploitWii,omitempty"`
-	EnableHTTPSExploitDS  *bool `xml:"enableHttpsExploitDS,omitempty"`
-
 	LogLevel  *int   `xml:"logLevel"`
 	LogOutput string `xml:"logOutput"`
 
-	CertPath    string `xml:"certPath"`
-	KeyPath     string `xml:"keyPath"`
 	WiiCertPath string `xml:"wiiCertPath"`
 	WiiKeyPath  string `xml:"wiiKeyPath"`
 
@@ -93,16 +87,6 @@ func GetConfig() Config {
 		} else {
 			config.NASAddressHTTPS = &config.DefaultAddress
 		}
-	}
-
-	if config.EnableHTTPSExploitWii == nil {
-		enable := true
-		config.EnableHTTPSExploitWii = &enable
-	}
-
-	if config.EnableHTTPSExploitDS == nil {
-		enable := true
-		config.EnableHTTPSExploitDS = &enable
 	}
 
 	if config.LogLevel == nil {

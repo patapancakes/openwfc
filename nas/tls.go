@@ -38,61 +38,15 @@ var (
 	serverCertsRecordWii []byte
 	rsaKeyDS             *rsa.PrivateKey
 	serverCertsRecordDS  []byte
-	realTLSConfig        *tls.Config
 )
 
 func setupTLS(config common.Config) {
-	privKeyPath := config.KeyPath
-	certsPath := config.CertPath
-	exploitWii := *config.EnableHTTPSExploitWii
-	exploitDS := *config.EnableHTTPSExploitDS
+	// Handle requests from Wii and DS
+	setupExploitWii()
 
-	setupRealTLS(privKeyPath, certsPath)
-	// Reread the private key and certs on a regular interval
-	go func() {
-		for {
-			time.Sleep(24 * time.Hour)
-			setupRealTLS(privKeyPath, certsPath)
-		}
-	}()
-
-	// Handle requests from Wii, DS and regular TLS
-
-	if exploitWii {
-		setupExploitWii()
-	}
-
-	if exploitDS {
+	if config.WiiCertPath != "" && config.WiiKeyPath != "" {
 		setupExploitDS(config)
 	}
-}
-
-func setupRealTLS(privKeyPath string, certsPath string) {
-	// Read server key and certs
-
-	serverKey, err := os.ReadFile(privKeyPath)
-	if err != nil {
-		logging.Error("NAS-TLS", "Failed to read server key:", err)
-		return
-	}
-
-	serverCerts, err := os.ReadFile(certsPath)
-	if err != nil {
-		logging.Error("NAS-TLS", "Failed to read server certs:", err)
-		return
-	}
-
-	cert, err := tls.X509KeyPair(serverCerts, serverKey)
-	if err != nil {
-		logging.Error("NAS-TLS", "Failed to parse server certs:", err)
-		return
-	}
-
-	config := tls.Config{
-		Certificates: []tls.Certificate{cert},
-	}
-
-	realTLSConfig = &config
 }
 
 func setupExploitWii() {
@@ -278,7 +232,6 @@ var (
 )
 
 // handleTLSHandshake handles the TLS request from the Wii or the DS, and creates tlsConn for further communication.
-// It may call handleRealTLS if the request is from a modern web browser.
 func (c *tlsConnection) handleTLSHandshake() (err error) {
 	moduleName := "NAS-TLS:" + c.Conn.RemoteAddr().String()
 
@@ -290,25 +243,20 @@ func (c *tlsConnection) handleTLSHandshake() (err error) {
 		}
 	}()
 
-	if rsaKeyDS == nil && rsaKeyWii == nil {
-		// Only handle real TLS connections
-		return c.handleRealTLSHandshake(c.Conn)
-	}
-
 	// Read client hello
 	var peekMatchWii, peekMatchDS bool
-	consumed := []byte{}
-	if rsaKeyDS != nil {
-		consumed, err = readBytes(c.Conn, dsClientHelloPrefix, consumed)
-		peekMatchDS = err == nil
-	}
 
-	if rsaKeyWii != nil && err == errUnexpectedBytes {
+	// try DS
+	consumed, err := readBytes(c.Conn, dsClientHelloPrefix, nil)
+	peekMatchDS = err == nil
+
+	// try Wii
+	if err == errUnexpectedBytes {
 		consumed, err = readBytes(c.Conn, wiiClientHelloPrefix, consumed)
 		peekMatchWii = err == nil
 	}
 
-	if err != nil && err != errUnexpectedBytes {
+	if err != nil {
 		return err
 	}
 
@@ -322,12 +270,6 @@ func (c *tlsConnection) handleTLSHandshake() (err error) {
 	case peekMatchDS:
 		macFn, cipher, clientCipher, err = handleDSSSLHandshake(moduleName, c.Conn)
 		version = VersionSSL30
-
-	case err == errUnexpectedBytes:
-		return c.handleRealTLSHandshake(nasInConn{
-			Conn: c.Conn,
-			in:   io.MultiReader(bytes.NewReader(consumed), c.Conn),
-		})
 	}
 
 	if err != nil {
@@ -345,24 +287,6 @@ func (c *tlsConnection) handleTLSHandshake() (err error) {
 		Version:      version,
 		Seq:          1,
 	}
-	c.handshake = true
-	return nil
-}
-
-// handleRealTLSHandshake handles the TLS request handshake legitimately using crypto/tls, and creates tlsConn
-func (c *tlsConnection) handleRealTLSHandshake(rawConn net.Conn) error {
-	if realTLSConfig == nil {
-		return errors.New("realTLSConfig is not set")
-	}
-
-	tlsConn := tls.Server(rawConn, realTLSConfig)
-
-	err := tlsConn.Handshake()
-	if err != nil {
-		_ = tlsConn.Close()
-		return err
-	}
-	c.tlsConn = tlsConn
 	c.handshake = true
 	return nil
 }
@@ -471,7 +395,7 @@ func handleWiiTLSHandshake(moduleName string, conn io.ReadWriter) (macFn macFunc
 	// Send an empty session ID
 	serverHello = append(serverHello, 0x00)
 
-	// Select cipher suite TLS_RSA_WITH_RC4_128_MD5 (0x0004)
+	// Select cipher suite TLS_RSA_WITH_RC4_128_MD5 (0x0004) and compression method NULL
 	serverHello = append(serverHello, []byte{
 		0x00, 0x04, 0x00,
 	}...)
@@ -630,7 +554,7 @@ func handleDSSSLHandshake(moduleName string, conn io.ReadWriter) (macFn macFunct
 	// Send an empty session ID
 	serverHello = append(serverHello, 0x00)
 
-	// Select cipher suite TLS_RSA_WITH_RC4_128_MD5 (0x0004)
+	// Select cipher suite TLS_RSA_WITH_RC4_128_MD5 (0x0004) and compression method NULL
 	serverHello = append(serverHello, []byte{
 		0x00, 0x04, 0x00,
 	}...)

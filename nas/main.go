@@ -49,10 +49,6 @@ func StartServer(reload bool) {
 	// Start SQL
 	db = database.Start(config)
 
-	if config.EnableHTTPS {
-		go setupTLS(config)
-	}
-
 	err := CacheProfanityFile()
 	if err != nil {
 		logging.Info("NAS", err)
@@ -84,19 +80,17 @@ func StartServer(reload bool) {
 	raceMux.HandleFunc("/", handleUnknown)
 
 	go listenAndServe()
-	if config.EnableHTTPS {
-		tlsServer = &http.Server{
-			Addr:        *config.NASAddressHTTPS + ":" + config.NASPortHTTPS,
-			Handler:     server.Handler,
-			IdleTimeout: server.IdleTimeout,
-			ReadTimeout: server.ReadTimeout,
-		}
-
-		go func() {
-			setupTLS(config)
-			listenAndServeTLS()
-		}()
+	tlsServer = &http.Server{
+		Addr:        *config.NASAddressHTTPS + ":" + config.NASPortHTTPS,
+		Handler:     server.Handler,
+		IdleTimeout: server.IdleTimeout,
+		ReadTimeout: server.ReadTimeout,
 	}
+
+	go func() {
+		setupTLS(config)
+		listenAndServeTLS()
+	}()
 }
 
 func Shutdown() {
