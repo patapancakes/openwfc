@@ -21,6 +21,7 @@ import (
 	"os"
 	"owfc/common"
 	"owfc/logging"
+	"slices"
 	"time"
 
 	"github.com/logrusorgru/aurora/v3"
@@ -235,14 +236,6 @@ var (
 func (c *tlsConnection) handleTLSHandshake() (err error) {
 	moduleName := "NAS-TLS:" + c.Conn.RemoteAddr().String()
 
-	// Recover from panics. TODO: is this really necessary?
-	defer func() {
-		if r := recover(); r != nil {
-			logging.Error(moduleName, "Panic:", r)
-			err = errors.New("panic occurred during TLS handshake")
-		}
-	}()
-
 	// Read client hello
 	var peekMatchWii, peekMatchDS bool
 
@@ -308,7 +301,7 @@ func (c *consoleTLSConn) Read(b []byte) (n int, err error) {
 		return c.decodedBuffer.Read(b)
 	}
 
-	recordLength := uint16(0)
+	var recordLength uint16
 	for {
 		for c.encodedBuffer.Len() < int(recordLength)+5 {
 			readBuf := make([]byte, 1024)
@@ -328,8 +321,8 @@ func (c *consoleTLSConn) Read(b []byte) (n int, err error) {
 			return 0, errors.New("invalid TLS version")
 		}
 
-		recordLength = binary.BigEndian.Uint16(buf[3:5])
-		if recordLength < 17 || (recordLength+5) > 0x1000 {
+		recordLength = binary.BigEndian.Uint16(buf[3:])
+		if recordLength < 1+md5.Size || (recordLength+5) > 0x1000 {
 			return 0, errors.New("invalid record length")
 		}
 
@@ -353,17 +346,19 @@ func (c *consoleTLSConn) Read(b []byte) (n int, err error) {
 		return 0, errors.New("non-application data received")
 	}
 	// Write the decrypted content to the buffer
-	if int(recordLength-16) > len(b) {
-		c.decodedBuffer.Write(buf[5+len(b) : 5+recordLength-16])
+	if int(recordLength-md5.Size) > len(b) {
+		c.decodedBuffer.Write(buf[5+len(b) : 5+recordLength-md5.Size])
 	}
 	c.encodedBuffer.Next(5 + int(recordLength))
 
-	return copy(b, buf[5:5+recordLength-16]), nil
+	return copy(b, buf[5:5+recordLength-md5.Size]), nil
 }
 
 func (c *consoleTLSConn) Write(b []byte) (n int, err error) {
-	var record []byte
-	record, c.Seq = encryptTLS(c.MacFn, c.Cipher, b, c.Seq, []byte{0x17, 0x03, 0x01, byte(len(b) >> 8), byte(len(b))})
+	record := []byte{0x17, 0x03, 0x01}
+	record = binary.BigEndian.AppendUint16(record, uint16(len(b)))
+
+	record, c.Seq = encryptTLS(c.MacFn, c.Cipher, b, c.Seq, record)
 	return c.Conn.Write(record)
 }
 
@@ -426,18 +421,20 @@ func handleWiiTLSHandshake(moduleName string, conn io.ReadWriter) (macFn macFunc
 
 		index += n
 
-		// Check client key exchange header
-		if !bytes.HasPrefix([]byte{
-			0x16, 0x03, 0x01, 0x00, 0x86, 0x10, 0x00, 0x00, 0x82, 0x00, 0x80,
-		}, buf[:min(index, 0x0B)]) {
-			logging.Error(moduleName, "Invalid client key exchange header:", aurora.Cyan(fmt.Sprintf("% X ", buf[:min(index, 0x0B)])))
-			err = errors.New("invalid client key exchange header")
-			return
+		if index > 0x0B {
+			// Check client key exchange header
+			if !bytes.HasPrefix(buf, []byte{
+				0x16, 0x03, 0x01, 0x00, 0x86, 0x10, 0x00, 0x00, 0x82, 0x00, 0x80,
+			}) {
+				logging.Error(moduleName, "Invalid client key exchange header:", aurora.Cyan(fmt.Sprintf("% X ", buf[:min(index, 0x0B)])))
+				err = errors.New("invalid client key exchange header")
+				return
+			}
 		}
 
 		if index > 0x8B {
 			// Check change cipher spec + finished header
-			if !bytes.HasPrefix(buf[0x8B:min(index, 0x8B+0x0B)], []byte{
+			if !bytes.HasPrefix(buf[0x8B:], []byte{
 				0x14, 0x03, 0x01, 0x00, 0x01, 0x01, 0x16, 0x03, 0x01, 0x00, 0x20,
 			}) {
 				logging.Error(moduleName, "Invalid client change cipher spec + finished header:", aurora.Cyan(fmt.Sprintf("%X ", buf[0x8B:min(index, 0x8B+0x0B)])))
@@ -464,8 +461,7 @@ func handleWiiTLSHandshake(moduleName string, conn io.ReadWriter) (macFn macFunc
 	finishHash.Write(buf[0x5 : 0x5+0x86])
 
 	// Decrypt the pre master secret using our RSA key
-	var preMasterSecret []byte
-	preMasterSecret, err = rsa.DecryptPKCS1v15(rand.Reader, rsaKeyWii, encryptedPreMasterSecret)
+	preMasterSecret, err := rsa.DecryptPKCS1v15(rand.Reader, rsaKeyWii, encryptedPreMasterSecret)
 	if err != nil {
 		logging.Error(moduleName, "Failed to decrypt pre master secret:", err)
 		return
@@ -488,18 +484,18 @@ func handleWiiTLSHandshake(moduleName string, conn io.ReadWriter) (macFn macFunc
 	masterSecret := make([]byte, 48)
 	prf10(masterSecret, preMasterSecret, []byte("master secret"), clientServerRandom)
 
-	_, serverMAC, clientKey, serverKey, _, _ := keysFromMasterSecret(VersionTLS10, masterSecret, clientRandom, serverRandom, 16, 16, 16)
+	_, serverMAC, clientKey, serverKey, _, _ := keysFromMasterSecret(VersionTLS10, masterSecret, clientRandom, serverRandom, md5.Size, 16, 16)
 
 	// Create the server RC4 cipher
 	cipher, err = rc4.NewCipher(serverKey)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	// Create the client RC4 cipher
 	clientCipher, err = rc4.NewCipher(clientKey)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	// Create the hmac cipher
@@ -585,18 +581,20 @@ func handleDSSSLHandshake(moduleName string, conn io.ReadWriter) (macFn macFunct
 
 		index += n
 
-		// Check client key exchange header
-		if !bytes.HasPrefix([]byte{
-			0x16, 0x03, 0x00, 0x00, 0x84, 0x10, 0x00, 0x00, 0x80,
-		}, buf[:min(index, 0x09)]) {
-			logging.Error(moduleName, "Invalid client key exchange header:", aurora.Cyan(fmt.Sprintf("% X ", buf[:min(index, 0x09)])))
-			err = errors.New("invalid client key exchange header")
-			return
+		if index > 0x09 {
+			// Check client key exchange header
+			if !bytes.HasPrefix(buf, []byte{
+				0x16, 0x03, 0x00, 0x00, 0x84, 0x10, 0x00, 0x00, 0x80,
+			}) {
+				logging.Error(moduleName, "Invalid client key exchange header:", aurora.Cyan(fmt.Sprintf("% X ", buf[:min(index, 0x09)])))
+				err = errors.New("invalid client key exchange header")
+				return
+			}
 		}
 
 		if index > 0x8B {
 			// Check change cipher spec + finished header
-			if !bytes.HasPrefix(buf[0x89:min(index, 0x89+0x0B)], []byte{
+			if !bytes.HasPrefix(buf[0x89:], []byte{
 				0x14, 0x03, 0x00, 0x00, 0x01, 0x01, 0x16, 0x03, 0x00, 0x00, 0x38,
 			}) {
 				logging.Error(moduleName, "Invalid client change cipher spec + finished header:", aurora.Cyan(fmt.Sprintf("%X ", buf[0x89:min(index, 0x89+0x0B)])))
@@ -623,8 +621,7 @@ func handleDSSSLHandshake(moduleName string, conn io.ReadWriter) (macFn macFunct
 	finishHash.Write(buf[0x5 : 0x5+0x84])
 
 	// Decrypt the pre master secret using our RSA key
-	var preMasterSecret []byte
-	preMasterSecret, err = rsa.DecryptPKCS1v15(rand.Reader, rsaKeyDS, encryptedPreMasterSecret)
+	preMasterSecret, err := rsa.DecryptPKCS1v15(rand.Reader, rsaKeyDS, encryptedPreMasterSecret)
 	if err != nil {
 		logging.Error(moduleName, "Failed to decrypt pre master secret:", err)
 		return
@@ -647,18 +644,18 @@ func handleDSSSLHandshake(moduleName string, conn io.ReadWriter) (macFn macFunct
 	masterSecret := make([]byte, 48)
 	prf30(masterSecret, preMasterSecret, []byte("master secret"), clientServerRandom)
 
-	_, serverMAC, clientKey, serverKey, _, _ := keysFromMasterSecret(VersionSSL30, masterSecret, clientRandom, serverRandom, 16, 16, 16)
+	_, serverMAC, clientKey, serverKey, _, _ := keysFromMasterSecret(VersionSSL30, masterSecret, clientRandom, serverRandom, md5.Size, 16, 16)
 
 	// Create the server RC4 cipher
 	cipher, err = rc4.NewCipher(serverKey)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	// Create the client RC4 cipher
 	clientCipher, err = rc4.NewCipher(clientKey)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	// Create the mac function
@@ -935,9 +932,7 @@ func encryptTLS(macFn macFunction, cipher *rc4.Cipher, payload []byte, seq uint6
 	cipher.XORKeyStream(record[5:], record[5:])
 
 	// Update length to include nonce, MAC and any block padding needed.
-	n := len(record) - 5
-	record[3] = byte(n >> 8)
-	record[4] = byte(n)
+	binary.BigEndian.PutUint16(record[3:], uint16(len(record)-5))
 
 	return record, seq + 1
 }
@@ -950,9 +945,8 @@ func macMD5(version uint16, key []byte) macFunction {
 	if version == VersionSSL30 {
 		mac := ssl30MAC{
 			h:   md5.New(),
-			key: make([]byte, len(key)),
+			key: slices.Clone(key),
 		}
-		copy(mac.key, key)
 		return mac
 	}
 	return tls10MAC{h: hmac.New(md5.New, key)}
@@ -988,7 +982,7 @@ var ssl30Pad2 = [48]byte{0x5c, 0x5c, 0x5c, 0x5c, 0x5c, 0x5c, 0x5c, 0x5c, 0x5c, 0
 
 func (s ssl30MAC) MAC(out, seq, header, data []byte, extra []byte) []byte {
 	padLength := 48
-	if s.h.Size() == 20 {
+	if s.h.Size() == sha1.Size {
 		padLength = 40
 	}
 
