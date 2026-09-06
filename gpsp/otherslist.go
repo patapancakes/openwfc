@@ -1,7 +1,6 @@
 package gpsp
 
 import (
-	"owfc/common"
 	"owfc/gpcm"
 	"owfc/logging"
 	"strconv"
@@ -10,66 +9,66 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
+type OthersListRequest struct {
+	Command        string `gs:"otherslist"`
+	SessKey        int32  `gs:"sesskey"`
+	ProfileID      uint32 `gs:"profileid"`
+	OtherPIDsCount int    `gs:"numopids"`
+	OtherPIDs      string `gs:"opids"`
+}
+
+type OthersListResponse struct {
+	Command string `gs:"otherslist"`
+	Entries []OthersListResponseEntry
+	Done    string `gs:"oldone"`
+}
+
+type OthersListResponseEntry struct {
+	OtherID    uint32 `gs:"o"`
+	UniqueNick string `gs:"uniquenick"`
+}
+
 // get list of the specified profiles that have added you as a friend
-func handleOthersList(command common.GameSpyCommand) string {
+func othersList(_ *gpcm.GameSpySession, req OthersListRequest) (OthersListResponse, error) {
 	moduleName := "GPSP"
 
-	profileId, err := strconv.Atoi(command.OtherValues["profileid"])
-	if err != nil {
-		logging.Error(moduleName, "Invalid profileid:", command.OtherValues["profileid"])
-		return gpcm.ErrSearch.GetMessage()
+	if !gpcm.VerifySessionKey(req.ProfileID, req.SessKey) {
+		logging.Error(moduleName, "Invalid sesskey:", req.SessKey)
+		return OthersListResponse{}, gpcm.ErrSearch
 	}
 
-	sessionKey, err := strconv.Atoi(command.OtherValues["sesskey"])
-	if err != nil {
-		logging.Error(moduleName, "Invalid sesskey:", command.OtherValues["sesskey"])
-		return gpcm.ErrSearch.GetMessage()
-	}
-
-	if !gpcm.VerifySessionKey(uint32(profileId), int32(sessionKey)) {
-		logging.Error(moduleName, "Invalid sesskey:", command.OtherValues["sesskey"])
-		return gpcm.ErrSearch.GetMessage()
-	}
-
-	moduleName = "GPSP:" + command.OtherValues["profileid"]
-	logging.Info(moduleName, "Lookup otherslist for", aurora.Cyan(profileId))
-
-	numopids, err := strconv.Atoi(command.OtherValues["numopids"])
-	if err != nil {
-		logging.Error(moduleName, "Invalid numopids:", command.OtherValues["numopids"])
-		return gpcm.ErrSearch.GetMessage()
-	}
+	moduleName = "GPSP:" + strconv.Itoa(int(req.ProfileID))
+	logging.Info(moduleName, "Lookup otherslist for", aurora.Cyan(req.ProfileID))
 
 	// why even send the request at this point
-	if numopids == 0 {
-		return `\otherslist\\oldone\\final`
+	if req.OtherPIDsCount == 0 {
+		return OthersListResponse{}, nil
 	}
 
 	var opids []uint32
-	for opid := range strings.SplitSeq(command.OtherValues["opids"], "|") {
+	for opid := range strings.SplitSeq(req.OtherPIDs, "|") {
 		opidInt, err := strconv.Atoi(opid)
 		if err != nil {
 			logging.Error("Invalid opid:", opid)
-			return gpcm.ErrSearch.GetMessage()
+			return OthersListResponse{}, gpcm.ErrSearch
 		}
 
 		opids = append(opids, uint32(opidInt))
 	}
-	if len(opids) != numopids {
-		logging.Error(moduleName, "Mismatch opids length with numopids:", aurora.Cyan(len(opids)), "!=", aurora.Cyan(numopids))
-		return gpcm.ErrSearch.GetMessage()
+	if len(opids) != req.OtherPIDsCount {
+		logging.Error(moduleName, "Mismatch opids length with numopids:", aurora.Cyan(len(opids)), "!=", aurora.Cyan(req.OtherPIDsCount))
+		return OthersListResponse{}, gpcm.ErrSearch
 	}
 
-	var payload strings.Builder
-	payload.WriteString(`\otherslist\`)
+	var others []OthersListResponseEntry
 	for _, opid := range opids {
 		friends, err := db.GetFriends(opid, false)
 		if err != nil {
 			logging.Error(moduleName, "Failed to get profile friend list:", err)
-			return gpcm.ErrSearch.GetMessage()
+			return OthersListResponse{}, gpcm.ErrSearch
 		}
 		for _, friend := range friends {
-			if friend.ID != uint32(profileId) {
+			if friend.ID != req.ProfileID {
 				continue
 			}
 
@@ -78,14 +77,15 @@ func handleOthersList(command common.GameSpyCommand) string {
 			profile, err := db.GetProfile(opid)
 			if err != nil {
 				logging.Error(moduleName, "Failed to get friend profile:", err)
-				return gpcm.ErrSearch.GetMessage()
+				return OthersListResponse{}, gpcm.ErrSearch
 			}
 
-			payload.WriteString(`\o\` + strconv.Itoa(int(profile.ID)))
-			payload.WriteString(`\uniquenick\` + profile.UniqueNick())
+			others = append(others, OthersListResponseEntry{
+				OtherID:    profile.ID,
+				UniqueNick: profile.UniqueNick(),
+			})
 		}
 	}
 
-	payload.WriteString(`\oldone\\final\`)
-	return payload.String()
+	return OthersListResponse{Entries: others}, nil
 }

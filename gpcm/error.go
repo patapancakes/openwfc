@@ -2,8 +2,8 @@ package gpcm
 
 import (
 	"owfc/common"
+	"owfc/common/gamespy"
 	"owfc/logging"
-	"strconv"
 )
 
 const (
@@ -163,20 +163,18 @@ var (
 )
 
 func (err GPError) GetMessage() string {
-	command := common.GameSpyCommand{
-		Command:      "error",
-		CommandValue: "",
-		OtherValues: map[string]string{
-			"err":    strconv.Itoa(err.ErrorCode),
-			"errmsg": err.ErrorString,
-		},
+	type ErrorResponse struct {
+		Command      string `gs:"error"`
+		ErrorCode    int    `gs:"err"`
+		ErrorMessage string `gs:"errmsg"`
+		Fatal        bool   `gs:"fatal,omitzero"`
 	}
 
-	if err.Fatal {
-		command.OtherValues["fatal"] = ""
-	}
-
-	return common.CreateGameSpyMessage(command)
+	return gamespy.Marshal(ErrorResponse{
+		ErrorCode:    err.ErrorCode,
+		ErrorMessage: err.ErrorString,
+		Fatal:        err.Fatal,
+	})
 }
 
 func (g *GameSpySession) replyError(gpErr GPError) {

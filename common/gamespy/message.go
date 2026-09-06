@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -12,53 +13,57 @@ var (
 	ErrInvalidGameSpyCommand = errors.New("invalid GameSpy command received")
 )
 
+const EndDelimiter = `\final\`
+
 func Unmarshal[T any](msg string) (T, error) {
 	var out T
 
-	v := reflect.ValueOf(&out).Elem()
-	t := v.Type()
-
 	var found bool
-	msg, found = strings.CutSuffix(msg, `\final\`)
+	msg, found = strings.CutSuffix(msg, EndDelimiter)
 	if !found {
 		return out, ErrInvalidGameSpyCommand
 	}
 
 	kvs := KeyValuesFromString(msg)
 
-	for field := range t.Fields() {
-		key := field.Tag.Get("gs")
+	for field, v := range reflect.ValueOf(&out).Elem().Fields() {
+		split := strings.Split(field.Tag.Get("gs"), ",")
+		key := split[0]
+
 		value := kvs.Get(key)
+		if slices.Contains(split, "raw") {
+			value, _, _ = strings.Cut(msg, `\`+key+`\`)
+		}
 		if value == "" {
 			continue
 		}
 
-		switch field.Type.Kind() {
+		switch v.Kind() {
 		case reflect.String:
-			v.FieldByIndex(field.Index).SetString(value)
+			v.SetString(value)
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			n, err := strconv.ParseUint(value, 10, field.Type.Bits())
+			n, err := strconv.ParseUint(value, 10, v.Type().Bits())
 			if err != nil {
 				return out, fmt.Errorf("%s: %w", key, err)
 			}
 
-			v.FieldByIndex(field.Index).SetUint(n)
+			v.SetUint(n)
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			n, err := strconv.ParseInt(value, 10, field.Type.Bits())
+			n, err := strconv.ParseInt(value, 10, v.Type().Bits())
 			if err != nil {
 				return out, fmt.Errorf("%s: %w", key, err)
 			}
 
-			v.FieldByIndex(field.Index).SetInt(n)
+			v.SetInt(n)
 		case reflect.Bool:
 			b, err := strconv.ParseBool(value)
 			if err != nil {
 				return out, fmt.Errorf("%s: %w", key, err)
 			}
 
-			v.FieldByIndex(field.Index).SetBool(b)
+			v.SetBool(b)
 		default:
-			return out, fmt.Errorf("unsupported field type %s for %q", field.Type, key)
+			return out, fmt.Errorf("unsupported field type %s for %q", v.Type(), key)
 		}
 	}
 
@@ -75,22 +80,36 @@ func Marshal(T any) string {
 	// otherwise build response
 	var out strings.Builder
 
-	v := reflect.ValueOf(T)
-	if v.Kind() == reflect.Pointer {
-		v = v.Elem()
-	}
+	marshalStruct(&out, reflect.ValueOf(T))
 
-	for field := range v.Fields() {
-		key := field.Tag.Get("gs")
+	out.WriteString(EndDelimiter)
+	return out.String()
+}
+
+func marshalStruct(out *strings.Builder, v reflect.Value) {
+	for field, val := range v.Fields() {
+		split := strings.Split(field.Tag.Get("gs"), ",")
+		key := split[0]
 		if key == "" {
 			continue
 		}
 
-		out.WriteString(`\`)
-		out.WriteString(key)
-		out.WriteString(`\`)
+		if slices.Contains(split, "omitzero") && val.IsZero() {
+			continue
+		}
 
-		val := v.FieldByIndex(field.Index)
+		out.WriteByte('\\')
+		out.WriteString(key)
+		out.WriteByte('\\')
+
+		if val.Kind() == reflect.Slice {
+			for _, v := range val.Fields() {
+				marshalStruct(out, v)
+			}
+
+			continue
+		}
+
 		switch val.Kind() {
 		case reflect.String:
 			out.WriteString(val.String())
@@ -107,8 +126,4 @@ func Marshal(T any) string {
 			out.WriteString(str)
 		}
 	}
-
-	out.WriteString(`\final\`)
-
-	return out.String()
 }

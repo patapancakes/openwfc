@@ -1,9 +1,12 @@
 package gamestats
 
 import (
+	"bytes"
 	"encoding/gob"
+	"errors"
 	"os"
 	"owfc/common"
+	"owfc/common/gamespy"
 	"owfc/database"
 	"owfc/gpcm"
 	"owfc/logging"
@@ -26,7 +29,7 @@ type GameStatsSession struct {
 	gameInfo   common.GameInfo
 
 	Authenticated bool
-	LoginID       int
+	LocalID       int
 	Profile       database.Profile
 
 	ReadBuffer  []byte
@@ -41,6 +44,16 @@ var (
 
 	sessionsByConnIndex = make(map[uint64]*GameStatsSession)
 	mutex               = deadlock.RWMutex{}
+
+	handlers = gamespy.Router{
+		"ka": gamespy.Handle(gpcm.KeepAlive),
+
+		"auth":  gamespy.Handle(auth),
+		"authp": gamespy.Handle(authProfile),
+
+		"getpd": gamespy.Handle(getPersistData),
+		"setpd": gamespy.Handle(setPersistData),
+	}
 )
 
 const (
@@ -111,25 +124,13 @@ func NewConnection(index uint64, address string) {
 		RemoteAddr: address,
 		ModuleName: "GSTATS:" + address,
 		Challenge:  common.RandomString(10),
-
-		SessionKey: 0,
-
-		Authenticated: false,
-		LoginID:       0,
-		Profile:       database.Profile{},
-
-		ReadBuffer:  []byte{},
-		WriteBuffer: []byte{},
 	}
 
-	session.Write(common.GameSpyCommand{
-		Command:      "lc",
-		CommandValue: "1",
-		OtherValues: map[string]string{
-			"challenge": session.Challenge,
-			"id":        "1",
-		},
-	})
+	session.write(gamespy.Marshal(gpcm.ChallengeRequest{
+		Command:   1,
+		Challenge: session.Challenge,
+		ID:        1,
+	}))
 	err := common.SendPacket(ServerName, index, []byte(session.WriteBuffer))
 	if err != nil {
 		logging.Error(session.ModuleName, "Failed to send initial packet:", err)
@@ -186,105 +187,69 @@ func HandlePacket(index uint64, data []byte) {
 	session.ReadBuffer = append(session.ReadBuffer, data...)
 
 	// Packets can be received in fragments, so make sure we're at the end of a packet
-	if string(session.ReadBuffer[max(0, length-7):length]) != `\final\` {
+	if !bytes.HasSuffix(session.ReadBuffer, []byte(gamespy.EndDelimiter)) {
 		return
 	}
 
-	// Decrypt the data, can decrypt multiple packets
-	var decrypted strings.Builder
-	decrypted.Grow(length)
-	p := 0
-	for i := 0; i < length; i++ {
-		if string(session.ReadBuffer[i:i+7]) == `\final\` {
-			decrypted.WriteString(`\final\`)
-
-			i += 6
-			p = 0
+	for _, message := range strings.SplitAfter(string(session.ReadBuffer), gamespy.EndDelimiter) {
+		if len(message) == 0 {
 			continue
 		}
 
-		decrypted.WriteRune(rune(session.ReadBuffer[i] ^ "GameSpy3D"[p]))
-		p = (p + 1) % 9
+		message = read(message)
+
+		command, _, _ := strings.Cut(strings.TrimPrefix(message, `\`), `\`)
+		handler, ok := handlers[command]
+		if !ok {
+			logging.Error(session.ModuleName, "Unknown command:", aurora.Cyan(command))
+			continue
+		}
+
+		resp, err := handler(session, message)
+		if err != nil {
+			gpErr, ok := errors.AsType[gpcm.GPError](err)
+			if ok {
+				session.replyError(gpErr)
+				// TODO: return now on fatal?
+			}
+
+			// TODO: log this
+			continue
+		}
+
+		session.write(resp)
 	}
 
-	message := decrypted.String()
 	session.ReadBuffer = []byte{}
 
-	commands, err := common.ParseGameStatsMessage(message)
+	if len(session.WriteBuffer) == 0 {
+		return
+	}
+
+	err := common.SendPacket(ServerName, session.ConnIndex, session.WriteBuffer)
 	if err != nil {
-		logging.Error(session.ModuleName, "Error parsing message:", err.Error())
-		logging.Error(session.ModuleName, "Raw data:", message)
-		session.replyError(gpcm.ErrParse)
+		logging.Error(session.ModuleName, "Failed to send packet:", err)
 		return
 	}
 
-	commands = session.handleCommand("ka", commands, func(command common.GameSpyCommand) {
-		session.Write(common.GameSpyCommand{
-			Command: "ka",
-		})
-	})
-
-	commands = session.handleCommand("auth", commands, session.auth)
-	commands = session.handleCommand("authp", commands, session.authp)
-
-	if len(commands) != 0 && !session.Authenticated {
-		logging.Error(session.ModuleName, "Attempt to run command before authentication:", aurora.Cyan(commands[0]))
-		session.replyError(gpcm.ErrNotLoggedIn)
-		return
-	}
-
-	commands = session.handleCommand("getpd", commands, session.getpd)
-	commands = session.handleCommand("setpd", commands, session.setpd)
-	common.MaybeUnused(session.ignoreCommand)
-
-	for _, command := range commands {
-		logging.Error(session.ModuleName, "Unknown command:", aurora.Cyan(command))
-	}
-
-	if len(session.WriteBuffer) > 0 {
-		err := common.SendPacket(ServerName, session.ConnIndex, session.WriteBuffer)
-		if err != nil {
-			logging.Error(session.ModuleName, "Failed to send packet:", err)
-		} else {
-			session.WriteBuffer = []byte{}
-		}
-	}
+	session.WriteBuffer = []byte{}
 }
 
-func (g *GameStatsSession) handleCommand(name string, commands []common.GameSpyCommand, handler func(command common.GameSpyCommand)) []common.GameSpyCommand {
-	var unhandled []common.GameSpyCommand
-
-	for _, command := range commands {
-		if command.Command != name {
-			unhandled = append(unhandled, command)
-			continue
-		}
-
-		logging.Info(g.ModuleName, "Command:", aurora.Yellow(command.Command))
-		handler(command)
-	}
-
-	return unhandled
+func (g *GameStatsSession) write(msg string) {
+	g.WriteBuffer = append(g.WriteBuffer, crypt(strings.TrimSuffix(msg, gamespy.EndDelimiter))+gamespy.EndDelimiter...)
 }
 
-func (g *GameStatsSession) ignoreCommand(name string, commands []common.GameSpyCommand) []common.GameSpyCommand {
-	var unhandled []common.GameSpyCommand
-
-	for _, command := range commands {
-		if command.Command != name {
-			unhandled = append(unhandled, command)
-		}
-	}
-
-	return unhandled
+func read(s string) string {
+	return crypt(strings.TrimSuffix(s, gamespy.EndDelimiter)) + gamespy.EndDelimiter
 }
 
-func (g *GameStatsSession) Write(command common.GameSpyCommand) {
-	// Encrypt the data and append it to be sent
-	payload := []byte(common.CreateGameSpyMessage(command))
-	// Exclude trailing \final\
-	for i := 0; i < len(payload)-7; i++ {
-		payload[i] ^= "GameSpy3D"[i%9]
+func crypt(s string) string {
+	const key = "GameSpy3D"
+
+	var crypted strings.Builder
+	for i, r := range s {
+		crypted.WriteByte(byte(r) ^ key[i%len(key)])
 	}
-	g.WriteBuffer = append(g.WriteBuffer, payload...)
+
+	return crypted.String()
 }

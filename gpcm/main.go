@@ -54,7 +54,7 @@ var (
 	mutex               = deadlock.Mutex{}
 
 	handlers = gamespy.Router{
-		"ka":    gamespy.Handle(keepAlive),
+		"ka":    gamespy.Handle(KeepAlive),
 		"login": gamespy.Handle(login),
 
 		"updatepro":  gamespy.Handle(updateProfile),
@@ -133,6 +133,12 @@ func CloseConnection(index uint64) {
 	}
 }
 
+type ChallengeRequest struct {
+	Command   int    `gs:"lc"`
+	Challenge string `gs:"challenge"`
+	ID        int    `gs:"id"`
+}
+
 func NewConnection(index uint64, address string) {
 	session := &GameSpySession{
 		ConnIndex:  index,
@@ -140,12 +146,6 @@ func NewConnection(index uint64, address string) {
 		Profile:    database.Profile{},
 		ModuleName: "GPCM:" + address,
 		Challenge:  common.RandomString(10),
-	}
-
-	type ChallengeRequest struct {
-		Command   int    `gs:"lc"`
-		Challenge string `gs:"challenge"`
-		ID        int    `gs:"id"`
 	}
 
 	err := common.SendPacket(ServerName, index, []byte(gamespy.Marshal(ChallengeRequest{
@@ -193,11 +193,11 @@ func HandlePacket(index uint64, data []byte) {
 	session.ReadBuffer = append(session.ReadBuffer, data...)
 
 	// Packets can be received in fragments, so make sure we're at the end of a packet
-	if !bytes.HasSuffix(session.ReadBuffer, []byte(`\final\`)) {
+	if !bytes.HasSuffix(session.ReadBuffer, []byte(gamespy.EndDelimiter)) {
 		return
 	}
 
-	for _, message := range strings.SplitAfter(string(session.ReadBuffer), `\final\`) {
+	for _, message := range strings.SplitAfter(string(session.ReadBuffer), gamespy.EndDelimiter) {
 		if len(message) == 0 {
 			continue
 		}

@@ -1,7 +1,9 @@
 package gpsp
 
 import (
+	"errors"
 	"owfc/common"
+	"owfc/common/gamespy"
 	"owfc/database"
 	"owfc/gpcm"
 	"owfc/logging"
@@ -10,7 +12,16 @@ import (
 
 var ServerName = "gpsp"
 
-var db database.Connection
+var (
+	db database.Connection
+
+	handlers = gamespy.Router{
+		"ka": gamespy.Handle(gpcm.KeepAlive),
+
+		"otherslist": gamespy.Handle(othersList),
+		"search":     gamespy.Handle(search),
+	}
+)
 
 func StartServer(reload bool) {
 	// Get config
@@ -33,38 +44,33 @@ func CloseConnection(index uint64) {
 func HandlePacket(index uint64, data []byte) {
 	moduleName := "GPSP"
 
-	// TODO: Handle split packets
-	var message strings.Builder
-	for _, b := range data {
-		message.WriteString(string(b))
-	}
-
-	commands, err := common.ParseGameSpyMessage(message.String())
-	if err != nil {
-		logging.Error(moduleName, "Error parsing message:", err.Error())
-		logging.Error(moduleName, "Raw data:", message.String())
-		replyError(moduleName, index, gpcm.ErrParse)
-		return
-	}
-
-	for _, command := range commands {
-		switch command.Command {
-		default:
-			logging.Error(moduleName, "Unknown command:", command.Command)
-			logging.Error(moduleName, "Raw data:", message.String())
-			replyError(moduleName, index, gpcm.ErrParse)
-
-		case "ka":
-			err = common.SendPacket(ServerName, index, []byte(`\ka\\final\`))
-
-		case "otherslist":
-			err = common.SendPacket(ServerName, index, []byte(handleOthersList(command)))
-
-		case "search":
-			err = common.SendPacket(ServerName, index, []byte(handleSearch(command)))
+	for _, message := range strings.SplitAfter(string(data), gamespy.EndDelimiter) {
+		if len(message) == 0 {
+			continue
 		}
-	}
-	if err != nil {
-		logging.Error(moduleName, "Failed to send packet:", err)
+
+		command, _, _ := strings.Cut(strings.TrimPrefix(message, `\`), `\`)
+		handler, ok := handlers[command]
+		if !ok {
+			logging.Error(moduleName, "Unknown command:", command)
+			replyError(moduleName, index, gpcm.ErrParse)
+		}
+
+		resp, err := handler(nil, message)
+		if err != nil {
+			gpErr, ok := errors.AsType[gpcm.GPError](err)
+			if ok {
+				replyError(moduleName, index, gpErr)
+				// TODO: return now on fatal?
+			}
+
+			// TODO: log this
+			continue
+		}
+
+		err = common.SendPacket(ServerName, index, []byte(resp))
+		if err != nil {
+			logging.Error(moduleName, "Failed to send packet:", err)
+		}
 	}
 }

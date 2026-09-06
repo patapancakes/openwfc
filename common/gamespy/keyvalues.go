@@ -52,15 +52,7 @@ func (kvs KeyValues) Has(k string) bool {
 }
 
 func (kvs *KeyValues) Set(k string, v string) {
-	i := -1
-	for vi, kv := range *kvs {
-		if kv.K != k {
-			continue
-		}
-
-		i = vi
-		break
-	}
+	i := slices.IndexFunc(*kvs, func(kv KV) bool { return kv.K == k })
 
 	// key doesn't exist
 	if i == -1 {

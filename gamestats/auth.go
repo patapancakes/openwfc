@@ -12,15 +12,29 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
-func (g *GameStatsSession) auth(command common.GameSpyCommand) {
-	game, ok := common.GetGameInfoByName(command.OtherValues["gamename"])
+type AuthRequest struct {
+	Command  string `gs:"auth"`
+	GameName string `gs:"gamename"`
+	Response string `gs:"response"`
+	Port     uint16 `gs:"port"`
+	ID       int    `gs:"id"`
+}
+
+type AuthResponse struct {
+	Command int    `gs:"lc"`
+	SessKey int32  `gs:"sesskey"`
+	Proof   string `gs:"proof"`
+	ID      int    `gs:"id"`
+}
+
+func auth(state *GameStatsSession, req AuthRequest) (AuthResponse, error) {
+	game, ok := common.GetGameInfoByName(req.GameName)
 	if !ok {
-		g.replyError(gpcm.ErrDatabase)
-		return
+		return AuthResponse{}, gpcm.ErrDatabase
 	}
 
 	var num int32
-	for _, b := range []byte(g.Challenge) {
+	for _, b := range []byte(state.Challenge) {
 		num = num*-1664117991 + int32(b)
 	}
 
@@ -28,80 +42,65 @@ func (g *GameStatsSession) auth(command common.GameSpyCommand) {
 	hash.Write([]byte(strconv.Itoa(int(num))))
 	hash.Write([]byte(game.SecretKey))
 
-	response := command.OtherValues["response"]
-	if response != hex.EncodeToString(hash.Sum(nil)) {
-		g.replyError(gpcm.ErrLoginBadPreAuth)
-		return
+	if req.Response != hex.EncodeToString(hash.Sum(nil)) {
+		return AuthResponse{}, gpcm.ErrLoginBadPreAuth
 	}
 
-	g.SessionKey = rand.Int31n(290000000) + 10000000
-	g.GameName = command.OtherValues["gamename"]
-	g.gameInfo = game
+	state.SessionKey = rand.Int31n(290000000) + 10000000
+	state.GameName = req.GameName
+	state.gameInfo = game
 
-	g.Write(common.GameSpyCommand{
-		Command:      "lc",
-		CommandValue: "2",
-		OtherValues: map[string]string{
-			"sesskey": strconv.FormatInt(int64(g.SessionKey), 10),
-			"proof":   "0",
-			"id":      "1",
-		},
-	})
+	return AuthResponse{
+		Command: 2,
+		SessKey: state.SessionKey,
+		Proof:   "0", // it's like this in a capture
+		ID:      req.ID,
+	}, nil
 }
 
-func (g *GameStatsSession) authp(command common.GameSpyCommand) {
-	lid := command.OtherValues["lid"]
-	errorCmd := common.GameSpyCommand{
-		Command:      "pauthr",
-		CommandValue: "-3",
-		OtherValues: map[string]string{
-			"lid":    lid,
-			"errmsg": "Invalid Validation",
-		},
+type AuthProfileRequest struct {
+	Command   string `gs:"authp"`
+	AuthToken string `gs:"authtoken"`
+	Response  string `gs:"resp"`
+	LocalID   int    `gs:"lid"`
+}
+
+type AuthProfileResponse struct {
+	Command uint32 `gs:"pauthr"`
+	LocalID int    `gs:"lid"`
+
+	ErrorMessage string `gs:"errmsg,omitzero"`
+}
+
+func authProfile(state *GameStatsSession, req AuthProfileRequest) (AuthProfileResponse, error) {
+	errMsg := AuthProfileResponse{
+		Command:      0,
+		LocalID:      req.LocalID,
+		ErrorMessage: "Invalid Validation",
 	}
 
-	if lid != "" {
-		var err error
-		g.LoginID, err = strconv.Atoi(lid)
-		if err != nil {
-			logging.Error(g.ModuleName, "Error parsing login ID:", err.Error())
-			g.Write(errorCmd)
-			return
-		}
-	}
-
-	authToken := command.OtherValues["authtoken"]
-	if authToken == "" {
-		logging.Error(g.ModuleName, "No authtoken provided")
-		g.Write(errorCmd)
-		return
-	}
+	state.LocalID = req.LocalID
 
 	var authTokenObj common.NASAuthToken
-	err := authTokenObj.Unmarshal(authToken)
+	err := authTokenObj.Unmarshal(req.AuthToken)
 	if err != nil {
-		logging.Error(g.ModuleName, "Error unmarshalling authtoken:", err.Error())
-		g.Write(errorCmd)
-		return
+		logging.Error(state.ModuleName, "Error unmarshalling authtoken:", err.Error())
+		return errMsg, nil
 	}
 
-	g.Profile, err = db.GetProfile(authTokenObj.ProfileID)
+	state.Profile, err = db.GetProfile(authTokenObj.ProfileID)
 	if err != nil {
-		logging.Error(g.ModuleName, "Error getting profile:", err.Error())
-		g.Write(errorCmd)
-		return
+		logging.Error(state.ModuleName, "Error getting profile:", err.Error())
+		return errMsg, nil
 	}
 
-	g.ModuleName = "GSTATS:" + strconv.FormatInt(int64(g.Profile.ID), 10)
-	g.Authenticated = true
+	state.ModuleName = "GSTATS:" + strconv.FormatInt(int64(state.Profile.ID), 10)
+	state.Authenticated = true
 
-	logging.Notice(g.ModuleName, "Authenticated, game name:", aurora.Cyan(g.gameInfo.Name))
+	logging.Notice(state.ModuleName, "Authenticated, game name:", aurora.Cyan(state.gameInfo.Name))
 
-	g.Write(common.GameSpyCommand{
-		Command:      "pauthr",
-		CommandValue: strconv.FormatUint(uint64(g.Profile.ID), 10),
-		OtherValues: map[string]string{
-			"lid": lid,
-		},
-	})
+	return AuthProfileResponse{
+		Command: state.Profile.ID,
+		LocalID: req.LocalID,
+	}, nil
 }
