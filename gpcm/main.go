@@ -1,9 +1,12 @@
 package gpcm
 
 import (
+	"bytes"
 	"encoding/gob"
+	"errors"
 	"os"
 	"owfc/common"
+	"owfc/common/gamespy"
 	"owfc/database"
 	"owfc/logging"
 	"strings"
@@ -49,6 +52,19 @@ var (
 	sessions            = map[uint32]*GameSpySession{}
 	sessionsByConnIndex = map[uint64]*GameSpySession{}
 	mutex               = deadlock.Mutex{}
+
+	handlers = gamespy.Router{
+		"ka":    gamespy.Handle(keepAlive),
+		"login": gamespy.Handle(login),
+
+		"updatepro":  gamespy.Handle(updateProfile),
+		"status":     gamespy.Handle(status),
+		"authadd":    gamespy.Handle(authAdd),
+		"addbuddy":   gamespy.Handle(addBuddy),
+		"delbuddy":   gamespy.Handle(delBuddy),
+		"bm":         gamespy.Handle(buddyMessage),
+		"getprofile": gamespy.Handle(getProfile),
+	}
 )
 
 func StartServer(reload bool) {
@@ -123,21 +139,21 @@ func NewConnection(index uint64, address string) {
 		RemoteAddr: address,
 		Profile:    database.Profile{},
 		ModuleName: "GPCM:" + address,
-		LoggedIn:   false,
 		Challenge:  common.RandomString(10),
-		Status:     "",
-		LocString:  "",
 	}
 
-	payload := common.CreateGameSpyMessage(common.GameSpyCommand{
-		Command:      "lc",
-		CommandValue: "1",
-		OtherValues: map[string]string{
-			"challenge": session.Challenge,
-			"id":        "1",
-		},
-	})
-	if err := common.SendPacket(ServerName, index, []byte(payload)); err != nil {
+	type ChallengeRequest struct {
+		Command   int    `gs:"lc"`
+		Challenge string `gs:"challenge"`
+		ID        int    `gs:"id"`
+	}
+
+	err := common.SendPacket(ServerName, index, []byte(gamespy.Marshal(ChallengeRequest{
+		Command:   1,
+		Challenge: session.Challenge,
+		ID:        1,
+	})))
+	if err != nil {
 		logging.Error("GPCM", "Failed to send login challenge packet:", err)
 		_ = common.CloseConnection(ServerName, index)
 		return
@@ -177,63 +193,44 @@ func HandlePacket(index uint64, data []byte) {
 	session.ReadBuffer = append(session.ReadBuffer, data...)
 
 	// Packets can be received in fragments, so make sure we're at the end of a packet
-	if string(session.ReadBuffer[max(0, length-7):length]) != `\final\` {
+	if !bytes.HasSuffix(session.ReadBuffer, []byte(`\final\`)) {
 		return
 	}
 
-	var builder strings.Builder
-	builder.Grow(length)
-
-	// Copy one rune at a time to enforce ASCII (rather than UTF-8)
-	for i := range length {
-		if session.ReadBuffer[i] == 0 {
-			logging.Error(session.ModuleName, "Null byte in packet")
-			logging.Error(session.ModuleName, "Raw data:", string(data))
-			session.replyError(ErrParse)
-			session.ReadBuffer = []byte{}
-			return
+	for _, message := range strings.SplitAfter(string(session.ReadBuffer), `\final\`) {
+		if len(message) == 0 {
+			continue
 		}
 
-		builder.WriteRune(rune(session.ReadBuffer[i]))
+		command, _, _ := strings.Cut(strings.TrimPrefix(message, `\`), `\`)
+		handler, ok := handlers[command]
+		if !ok {
+			logging.Error(session.ModuleName, "Unknown command:", aurora.Cyan(command))
+			continue
+		}
+
+		resp, err := handler(session, message)
+		if err != nil {
+			gpErr, ok := errors.AsType[GPError](err)
+			if ok {
+				session.replyError(gpErr)
+				// TODO: return now on fatal?
+			}
+
+			// TODO: log this
+			continue
+		}
+
+		session.WriteBuffer += resp
+
+		// HACK: send friends info after login
+		if command == "login" {
+			session.flushBuffer()
+			session.sendFriendsInfo()
+		}
 	}
 
-	message := builder.String()
 	session.ReadBuffer = []byte{}
-
-	commands, err := common.ParseGameSpyMessage(message)
-	if err != nil {
-		logging.Error(session.ModuleName, "Error parsing message:", err.Error())
-		logging.Error(session.ModuleName, "Raw data:", message)
-		session.replyError(ErrParse)
-		return
-	}
-
-	// Commands must be handled in a certain order, not in the order supplied by the client
-
-	commands = session.handleCommand("ka", commands, func(command common.GameSpyCommand) {
-		_ = common.SendPacket(ServerName, session.ConnIndex, []byte(`\ka\\final\`))
-	})
-	commands = session.handleCommand("login", commands, session.login)
-	commands = session.ignoreCommand("logout", commands)
-
-	if len(commands) != 0 && !session.LoggedIn {
-		logging.Error(session.ModuleName, "Attempt to run command before login:", aurora.Cyan(commands[0]))
-		session.replyError(ErrNotLoggedIn)
-		return
-	}
-
-	commands = session.handleCommand("updatepro", commands, session.updateProfile)
-	commands = session.handleCommand("status", commands, session.setStatus)
-	commands = session.handleCommand("authadd", commands, session.authAddFriend)
-	commands = session.handleCommand("addbuddy", commands, session.addFriend)
-	commands = session.handleCommand("delbuddy", commands, session.removeFriend)
-	commands = session.handleCommand("bm", commands, session.buddyMessage)
-	commands = session.handleCommand("getprofile", commands, session.getProfile)
-
-	for _, command := range commands {
-		logging.Error(session.ModuleName, "Unknown command:", aurora.Cyan(command))
-	}
-
 	session.flushBuffer()
 }
 
@@ -242,55 +239,13 @@ func (g *GameSpySession) flushBuffer() {
 		return
 	}
 
-	data := []byte{}
-	logged := false
-	for c := 0; c < len(g.WriteBuffer); c++ {
-		if g.WriteBuffer[c] == 0x00 {
-			if !logged {
-				logging.Warn(g.ModuleName, "Non-char or null byte in response packet:", g.WriteBuffer)
-				logged = true
-			}
-			continue
-		}
-
-		data = append(data, g.WriteBuffer[c])
-	}
-
-	err := common.SendPacket(ServerName, g.ConnIndex, data)
+	err := common.SendPacket(ServerName, g.ConnIndex, []byte(g.WriteBuffer))
 	if err != nil {
 		logging.Error(g.ModuleName, "Failed to send response packet:", err)
 		return
 	}
 
 	g.WriteBuffer = ""
-}
-
-func (g *GameSpySession) handleCommand(name string, commands []common.GameSpyCommand, handler func(command common.GameSpyCommand)) []common.GameSpyCommand {
-	var unhandled []common.GameSpyCommand
-
-	for _, command := range commands {
-		if command.Command != name {
-			unhandled = append(unhandled, command)
-			continue
-		}
-
-		logging.Info(g.ModuleName, "Command:", aurora.Yellow(command.Command))
-		handler(command)
-	}
-
-	return unhandled
-}
-
-func (g *GameSpySession) ignoreCommand(name string, commands []common.GameSpyCommand) []common.GameSpyCommand {
-	var unhandled []common.GameSpyCommand
-
-	for _, command := range commands {
-		if command.Command != name {
-			unhandled = append(unhandled, command)
-		}
-	}
-
-	return unhandled
 }
 
 func saveState() error {

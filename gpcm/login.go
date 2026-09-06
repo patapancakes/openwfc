@@ -39,98 +39,111 @@ func generateProof(gpcmChallenge, nasChallenge, authToken, clientChallenge strin
 	return generateResponse(clientChallenge, nasChallenge, authToken, gpcmChallenge)
 }
 
-func (g *GameSpySession) login(command common.GameSpyCommand) {
-	if g.LoggedIn {
-		logging.Error(g.ModuleName, "Attempt to login twice")
-		g.replyError(ErrLogin)
-		return
-	}
+type LoginRequest struct {
+	Command     string `gs:"login"`
+	Challenge   string `gs:"challenge"`
+	AuthToken   string `gs:"authtoken"`
+	Response    string `gs:"response"`
+	Firewall    bool   `gs:"firewall"`
+	Port        uint16 `gs:"port"`
+	ProductID   int    `gs:"productid"`
+	GameName    string `gs:"gamename"`
+	NamespaceID int    `gs:"namespaceid"`
+	ID          int    `gs:"id"`
+}
 
-	authToken := command.OtherValues["authtoken"]
-	if authToken == "" {
-		g.replyError(ErrLogin)
-		return
+type LoginResponse struct {
+	Command     int    `gs:"lc"`
+	SessKey     int32  `gs:"sesskey"`
+	Proof       string `gs:"proof"`
+	UserID      uint64 `gs:"userid"`
+	ProfileID   uint32 `gs:"profileid"`
+	UniqueNick  string `gs:"uniquenick"`
+	LoginTicket string `gs:"lt"`
+	ID          int    `gs:"id"`
+}
+
+func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
+	if state.LoggedIn {
+		logging.Error(state.ModuleName, "Attempt to login twice")
+		return LoginResponse{}, ErrLogin
 	}
 
 	var authTokenObj common.NASAuthToken
-	err := authTokenObj.Unmarshal(authToken)
+	err := authTokenObj.Unmarshal(req.AuthToken)
 	if err != nil {
-		logging.Error(g.ModuleName, "Failed to unmarshal auth token:", err)
+		logging.Error(state.ModuleName, "Failed to unmarshal auth token:", err)
 		if err == common.ErrTokenExpired {
-			g.replyError(ErrLoginLoginTicketExpired)
-			return
+			return LoginResponse{}, ErrLoginLoginTicketExpired
 		}
-		g.replyError(ErrLogin)
-		return
+
+		return LoginResponse{}, ErrLogin
 	}
 
-	g.GameName = command.OtherValues["gamename"]
-	logging.Info(g.ModuleName, "Game name:", aurora.Cyan(g.GameName))
-	g.GameCode = common.NullTerminatedString(authTokenObj.GameCode[:])
-	g.Region = authTokenObj.Region
-	g.Language = authTokenObj.Lang
-	g.ConsoleFriendCode = authTokenObj.ConsoleFriendCode
-	g.UnitCode = authTokenObj.UnitCode
+	state.GameName = req.GameName
+	logging.Info(state.ModuleName, "Game name:", aurora.Cyan(state.GameName))
+	state.GameCode = common.NullTerminatedString(authTokenObj.GameCode[:])
+	state.Region = authTokenObj.Region
+	state.Language = authTokenObj.Lang
+	state.ConsoleFriendCode = authTokenObj.ConsoleFriendCode
+	state.UnitCode = authTokenObj.UnitCode
 
 	var endianness binary.ByteOrder = binary.LittleEndian
-	if g.UnitCode == UnitCodeWii {
+	if state.UnitCode == UnitCodeWii {
 		endianness = binary.BigEndian
 	}
 
-	g.InGameName = common.UTF16Decode(authTokenObj.InGameScreenName[:], endianness)
+	state.InGameName = common.UTF16Decode(authTokenObj.InGameScreenName[:], endianness)
 
-	if g.UnitCode == UnitCodeDS {
-		g.HostPlatform = "DS"
+	if state.UnitCode == UnitCodeDS {
+		state.HostPlatform = "DS"
 	} else {
-		g.HostPlatform = "Wii"
+		state.HostPlatform = "Wii"
 	}
 
-	g.LoginInfoSet = true
+	state.LoginInfoSet = true
 
 	logging.Event(
 		"received_login_info",
 		map[string]any{
 			"user_id":      authTokenObj.UserID,
-			"game_name":    g.GameName,
-			"wii_number":   g.ConsoleFriendCode,
-			"in_game_name": g.InGameName,
-			"unit_code":    g.UnitCode,
-			"ip_address":   g.RemoteAddr,
+			"game_name":    state.GameName,
+			"wii_number":   state.ConsoleFriendCode,
+			"in_game_name": state.InGameName,
+			"unit_code":    state.UnitCode,
+			"ip_address":   state.RemoteAddr,
 		},
 	)
 
-	expectedUnitCode := common.GetExpectedUnitCode(g.GameName)
-	if (g.UnitCode != UnitCodeDS && g.UnitCode != UnitCodeWii) || (g.UnitCode != expectedUnitCode && expectedUnitCode != UnitCodeDSAndWii) {
-		logging.Error(g.ModuleName, "Incorrect unit code specified:", aurora.Cyan(g.UnitCode))
-		g.replyError(ErrLogin)
-		return
+	expectedUnitCode := common.GetExpectedUnitCode(state.GameName)
+	if (state.UnitCode != UnitCodeDS && state.UnitCode != UnitCodeWii) || (state.UnitCode != expectedUnitCode && expectedUnitCode != UnitCodeDSAndWii) {
+		logging.Error(state.ModuleName, "Incorrect unit code specified:", aurora.Cyan(state.UnitCode))
+		return LoginResponse{}, ErrLogin
 	}
 
 	nasChallenge := common.NullTerminatedString(authTokenObj.Challenge[:])
 
-	response := generateResponse(g.Challenge, nasChallenge, authToken, command.OtherValues["challenge"])
-	if response != command.OtherValues["response"] {
-		g.replyError(ErrLogin)
-		return
+	response := generateResponse(state.Challenge, nasChallenge, req.AuthToken, req.Challenge)
+	if response != req.Response {
+		return LoginResponse{}, ErrLogin
 	}
 
-	proof := generateProof(g.Challenge, nasChallenge, command.OtherValues["authtoken"], command.OtherValues["challenge"])
+	proof := generateProof(state.Challenge, nasChallenge, req.AuthToken, req.Challenge)
 
-	g.Profile, err = db.GetProfile(authTokenObj.ProfileID)
+	state.Profile, err = db.GetProfile(authTokenObj.ProfileID)
 	if err != nil {
-		logging.Error(g.ModuleName, "Error getting profile:", err.Error())
-		g.replyError(ErrLogin)
-		return
+		logging.Error(state.ModuleName, "Error getting profile:", err)
+		return LoginResponse{}, ErrLogin
 	}
 
 	logging.Notice("DATABASE", "Log in GameSpy profile:", aurora.Cyan(authTokenObj.UserID), "-", aurora.Cyan(authTokenObj.ProfileID))
 
-	g.ModuleName = "GPCM:" + strconv.FormatInt(int64(g.Profile.ID), 10) + "*"
-	g.ModuleName += "/" + common.CalcFriendCodeString(g.Profile.ID, g.Profile.GsbrCode[:4]) + "*"
+	state.ModuleName = "GPCM:" + strconv.FormatInt(int64(state.Profile.ID), 10) + "*"
+	state.ModuleName += "/" + common.CalcFriendCodeString(state.Profile.ID, state.Profile.GsbrCode[:4]) + "*"
 
 	// Check to see if a session is already open with this profile ID
 	mutex.Lock()
-	otherSession, exists := sessions[g.Profile.ID]
+	otherSession, exists := sessions[state.Profile.ID]
 	if exists {
 		otherSession.replyError(ErrForcedDisconnect)
 
@@ -139,102 +152,57 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 			time.Sleep(300 * time.Millisecond)
 			mutex.Lock()
 
-			if _, exists = sessions[g.Profile.ID]; !exists {
+			_, exists = sessions[state.Profile.ID]
+			if !exists {
 				break
 			}
 
 			// Give up after 6 seconds
 			if i >= 20 {
 				mutex.Unlock()
-				logging.Error(g.ModuleName, "Failed to disconnect other session")
-				g.replyError(ErrForcedDisconnect)
-				return
+				logging.Error(state.ModuleName, "Failed to disconnect other session")
+				return LoginResponse{}, ErrForcedDisconnect
 			}
 		}
 	}
-	sessions[g.Profile.ID] = g
+
+	sessions[state.Profile.ID] = state
 	mutex.Unlock()
 
-	g.AuthToken = authToken
-	g.LoginTicket = common.GPCMLoginTicket{ProfileID: g.Profile.ID}.Marshal()
-	g.SessionKey = rand.Int31n(290000000) + 10000000
+	state.AuthToken = req.AuthToken
+	state.LoginTicket = common.GPCMLoginTicket{ProfileID: state.Profile.ID}.Marshal()
+	state.SessionKey = rand.Int31n(290000000) + 10000000
 
-	g.LoggedIn = true
+	state.LoggedIn = true
 
-	g.ModuleName = "GPCM:" + strconv.FormatInt(int64(g.Profile.ID), 10)
-	g.ModuleName += "/" + common.CalcFriendCodeString(g.Profile.ID, g.Profile.GsbrCode[:4])
+	state.ModuleName = "GPCM:" + strconv.FormatInt(int64(state.Profile.ID), 10)
+	state.ModuleName += "/" + common.CalcFriendCodeString(state.Profile.ID, state.Profile.GsbrCode[:4])
 
-	replyUserId := g.Profile.UserID
-	if g.UnitCode == UnitCodeDS {
+	replyUserId := state.Profile.UserID
+	if state.UnitCode == UnitCodeDS {
 		// Workaround for SDK bug
 		replyUserId = 0
-	}
-
-	otherValues := map[string]string{
-		"sesskey":    strconv.FormatInt(int64(g.SessionKey), 10),
-		"proof":      proof,
-		"userid":     strconv.FormatUint(replyUserId, 10),
-		"profileid":  strconv.FormatUint(uint64(g.Profile.ID), 10),
-		"uniquenick": g.Profile.UniqueNick(),
-		"lt":         g.LoginTicket,
-		"id":         command.OtherValues["id"],
-	}
-
-	payload := common.CreateGameSpyMessage(common.GameSpyCommand{
-		Command:      "lc",
-		CommandValue: "2",
-		OtherValues:  otherValues,
-	})
-
-	if err := common.SendPacket(ServerName, g.ConnIndex, []byte(payload)); err != nil {
-		logging.Error("GPCM", "Failed to send login response packet")
-		panic(err)
-	}
-
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	// send status for unauthorized outgoing friend requests
-	outgoing, err := db.GetFriends(g.Profile.ID, true)
-	if err == nil {
-		for _, friend := range outgoing {
-			if friend.Authorized {
-				continue
-			}
-
-			// TODO: see if it should send their online status
-			sendMessageToSessionBuffer(BuddyStatus, friend.ID, g, offlineMessage)
-		}
-	}
-
-	// send status for incoming friend requests / mutual friends
-	friends, err := db.GetFriends(g.Profile.ID, false)
-	if err == nil {
-		for _, friend := range friends {
-			if !friend.Authorized {
-				sendMessageToSessionBuffer(BuddyRequest, friend.ID, g, addFriendMessage)
-				continue
-			}
-
-			session, ok := sessions[friend.ID]
-			if !ok || !session.LoggedIn {
-				sendMessageToSessionBuffer(BuddyStatus, friend.ID, g, offlineMessage)
-				continue
-			}
-
-			session.sendFriendStatus(g.Profile.ID, false)
-		}
-
-		g.flushBuffer()
 	}
 
 	logging.Event(
 		"logged_in",
 		map[string]any{
-			"profile_id":   g.Profile.ID,
-			"game_name":    g.GameName,
-			"in_game_name": g.InGameName,
-			"ip_address":   g.RemoteAddr,
+			"profile_id":   state.Profile.ID,
+			"game_name":    state.GameName,
+			"in_game_name": state.InGameName,
+			"ip_address":   state.RemoteAddr,
 		},
 	)
+
+	return LoginResponse{
+		Command: 2,
+
+		SessKey:     state.SessionKey,
+		Proof:       proof,
+		UserID:      replyUserId,
+		ProfileID:   state.Profile.ID,
+		UniqueNick:  state.Profile.UniqueNick(),
+		LoginTicket: state.LoginTicket,
+		ID:          req.ID,
+	}, nil
 }

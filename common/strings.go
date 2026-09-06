@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"math/rand"
-	"slices"
 	"unicode/utf16"
 )
 
@@ -77,8 +76,4 @@ func IsUppercaseAlphanumeric(str string) bool {
 	}
 
 	return true
-}
-
-func StringInSlice(str string, slice []string) bool {
-	return slices.Contains(slice, str)
 }

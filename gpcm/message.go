@@ -1,10 +1,9 @@
 package gpcm
 
 import (
-	"owfc/common"
+	"owfc/common/gamespy"
 	"owfc/logging"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/logrusorgru/aurora/v3"
@@ -12,38 +11,33 @@ import (
 
 var isDWCMatchCommand = regexp.MustCompile(`^GPCM\d+vMAT`).MatchString
 
-func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
+type BuddyMessageRequest struct {
+	Command int    `gs:"bm"`
+	SessKey int32  `gs:"sesskey"`
+	Target  uint32 `gs:"t"`
+	Message string `gs:"msg"`
+}
+
+func buddyMessage(state *GameSpySession, req BuddyMessageRequest) (gamespy.NoResponse, error) {
+	if !state.LoggedIn {
+		return gamespy.NoResponse{}, ErrNotLoggedIn
+	}
+
 	// TODO: There are other command values that mean the same thing
-	if command.CommandValue != strconv.Itoa(BuddyMessage) {
-		logging.Error(g.ModuleName, "Received unknown buddy message type:", aurora.Cyan(command.CommandValue))
-		return
+	if req.Command != BuddyMessage {
+		logging.Error(state.ModuleName, "Received unknown buddy message type:", aurora.Cyan(req.Command))
+		return gamespy.NoResponse{}, nil
 	}
 
-	strToProfileId := command.OtherValues["t"]
-	toProfileId, err := strconv.ParseUint(strToProfileId, 10, 32)
-	if err != nil {
-		logging.Error(g.ModuleName, "Invalid profile ID string:", aurora.Cyan(strToProfileId))
-		g.replyError(ErrMessage)
-		return
-	}
-
-	if !g.isFriendAuthorized(uint32(toProfileId)) {
-		logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "is not even on sender's friend list")
-		g.replyError(ErrMessageNotFriends)
-		return
-	}
-
-	msg, ok := command.OtherValues["msg"]
-	if !ok || msg == "" {
-		logging.Error(g.ModuleName, "Missing message value")
-		g.replyError(ErrMessage)
-		return
+	if !state.isFriendAuthorized(req.Target) {
+		logging.Error(state.ModuleName, "Destination", aurora.Cyan(req.Target), "is not even on sender's friend list")
+		return gamespy.NoResponse{}, ErrMessageNotFriends
 	}
 
 	// DWCi_GetGPBuddyAdditionalMsg copies everything between / into a 16 byte buffer
 	// regardless of actual size
-	if isDWCMatchCommand(msg) {
-		for i, segment := range strings.Split(msg, "/") {
+	if isDWCMatchCommand(req.Message) {
+		for i, segment := range strings.Split(req.Message, "/") {
 			// first segment is header and message type
 			if i == 0 {
 				continue
@@ -54,29 +48,27 @@ func (g *GameSpySession) buddyMessage(command common.GameSpyCommand) {
 				continue
 			}
 
-			logging.Error(g.ModuleName, "Invalid DWC match command parameter")
-			g.replyError(ErrMessage)
-			return
+			logging.Error(state.ModuleName, "Invalid DWC match command parameter")
+			return gamespy.NoResponse{}, ErrMessage
 		}
 	}
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	var toSession *GameSpySession
-	if toSession, ok = sessions[uint32(toProfileId)]; !ok || !toSession.LoggedIn {
-		logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "is not online")
-		g.replyError(ErrMessageFriendOffline)
-		return
+	toSession, ok := sessions[req.Target]
+	if !ok || !toSession.LoggedIn {
+		logging.Error(state.ModuleName, "Destination", aurora.Cyan(req.Target), "is not online")
+		return gamespy.NoResponse{}, ErrMessageFriendOffline
 	}
 
-	if toSession.GameName != g.GameName {
-		logging.Error(g.ModuleName, "Destination", aurora.Cyan(toProfileId), "is not playing the same game")
-		g.replyError(ErrMessage)
-		return
+	if toSession.GameName != state.GameName {
+		logging.Error(state.ModuleName, "Destination", aurora.Cyan(req.Target), "is not playing the same game")
+		return gamespy.NoResponse{}, ErrMessage
 	}
 
-	logging.Notice(g.ModuleName, "Sending buddy message to", aurora.Cyan(toSession.Profile.ID))
+	logging.Notice(state.ModuleName, "Sending buddy message to", aurora.Cyan(toSession.Profile.ID))
 
-	sendMessageToSession(BuddyMessage, g.Profile.ID, toSession, msg)
+	toSession.sendMessage(BuddyMessage, state.Profile.ID, req.Message, false)
+	return gamespy.NoResponse{}, nil
 }

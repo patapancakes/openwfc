@@ -2,6 +2,7 @@ package gpcm
 
 import (
 	"owfc/common"
+	"owfc/common/gamespy"
 	"owfc/logging"
 	"strconv"
 	"strings"
@@ -48,193 +49,200 @@ func (g *GameSpySession) isBm1AuthMessageNeeded() bool {
 	return g.UnitCode == UnitCodeDS || g.UnitCode == UnitCodeDSAndWii || g.GameName == "jissenpachwii" || g.GameName == "drmariowii" || g.GameName == "pokebattlewii"
 }
 
-func (g *GameSpySession) addFriend(command common.GameSpyCommand) {
-	newProfileId, err := strconv.Atoi(command.OtherValues["newprofileid"])
-	if err != nil {
-		g.replyError(ErrAddFriend)
-		return
+type AddBuddyRequest struct {
+	Command      string `gs:"addbuddy"`
+	SessKey      int32  `gs:"sesskey"`
+	NewProfileID uint32 `gs:"newprofileid"`
+	Reason       string `gs:"reason"`
+}
+
+func addBuddy(state *GameSpySession, req AddBuddyRequest) (gamespy.NoResponse, error) {
+	if !state.LoggedIn {
+		return gamespy.NoResponse{}, ErrNotLoggedIn
 	}
 
-	if newProfileId == int(g.Profile.ID) {
-		logging.Error(g.ModuleName, "Attempt to add self as friend")
-		g.replyError(ErrAddFriendBadNew)
-		return
+	if req.NewProfileID == state.Profile.ID {
+		logging.Error(state.ModuleName, "Attempt to add self as friend")
+		return gamespy.NoResponse{}, ErrAddFriendBadNew
 	}
 
-	fc := common.CalcFriendCodeString(uint32(newProfileId), g.Profile.GsbrCode[:4])
-	logging.Info(g.ModuleName, "Add friend:", aurora.Cyan(newProfileId), aurora.Cyan(fc))
+	fc := common.CalcFriendCodeString(req.NewProfileID, state.Profile.GsbrCode[:4])
+	logging.Info(state.ModuleName, "Add friend:", aurora.Cyan(req.NewProfileID), aurora.Cyan(fc))
 
-	err = db.AddFriend(g.Profile.ID, uint32(newProfileId))
+	err := db.AddFriend(state.Profile.ID, req.NewProfileID)
 	if err != nil {
 		switch mysqlerrnum.FromError(err) {
 		case mysqlerrnum.ErrDupEntry:
-			if g.isFriendAuthorized(uint32(newProfileId)) {
-				logging.Info(g.ModuleName, "Attempt to add a friend twice")
-				g.replyError(ErrAddFriendAlreadyFriends)
-			}
-
-			return
+			logging.Info(state.ModuleName, "Attempt to add a friend twice")
+			return gamespy.NoResponse{}, ErrAddFriendAlreadyFriends
 		case mysqlerrnum.ErrNoReferencedRow2:
-			logging.Info(g.ModuleName, "Attempt to add a non-existent friend")
-			g.replyError(ErrAddFriendBadNew)
-		default:
-			logging.Info(g.ModuleName, err)
-			g.replyError(ErrAddFriend)
+			logging.Info(state.ModuleName, "Attempt to add a non-existent friend")
+			return gamespy.NoResponse{}, ErrAddFriendBadNew
 		}
 
-		return
+		logging.Info(state.ModuleName, err)
+		return gamespy.NoResponse{}, ErrAddFriend
 	}
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	recipient, ok := sessions[uint32(newProfileId)]
+	recipient, ok := sessions[req.NewProfileID]
 	if !ok || recipient == nil || !recipient.LoggedIn {
-		logging.Info(g.ModuleName, "Destination is not online")
-		return
+		logging.Info(state.ModuleName, "Destination is not online")
+		return gamespy.NoResponse{}, nil
 	}
 
 	// notify recipient of the friend request
-	sendMessageToSession(BuddyRequest, g.Profile.ID, recipient, addFriendMessage)
+	recipient.sendMessage(BuddyRequest, state.Profile.ID, addFriendMessage, false)
+	return gamespy.NoResponse{}, nil
 }
 
-func (g *GameSpySession) removeFriend(command common.GameSpyCommand) {
-	delProfileID, err := strconv.Atoi(command.OtherValues["delprofileid"])
-	if err != nil {
-		logging.Error(g.ModuleName, aurora.Cyan(delProfileID), "is not a valid profile id")
-		g.replyError(ErrDeleteFriend)
-		return
+type DelBuddyRequest struct {
+	Command      string `gs:"delbuddy"`
+	SessKey      int32  `gs:"sesskey"`
+	DelProfileID uint32 `gs:"delprofileid"`
+}
+
+func delBuddy(state *GameSpySession, req DelBuddyRequest) (gamespy.NoResponse, error) {
+	if !state.LoggedIn {
+		return gamespy.NoResponse{}, ErrNotLoggedIn
 	}
 
-	delProfileID32 := uint32(delProfileID)
-
-	fc := common.CalcFriendCodeString(delProfileID32, g.Profile.GsbrCode[:4])
-	logging.Info(g.ModuleName, "Remove friend:", aurora.Cyan(delProfileID), aurora.Cyan(fc))
+	fc := common.CalcFriendCodeString(req.DelProfileID, state.Profile.GsbrCode[:4])
+	logging.Info(state.ModuleName, "Remove friend:", aurora.Cyan(req.DelProfileID), aurora.Cyan(fc))
 
 	// get authorized status before we remove
-	authorized := g.isFriendAuthorized(delProfileID32)
+	authorized := state.isFriendAuthorized(req.DelProfileID)
 
-	revoked, err := db.RemoveFriend(g.Profile.ID, delProfileID32)
+	revoked, err := db.RemoveFriend(state.Profile.ID, req.DelProfileID)
 	if err != nil {
-		g.replyError(ErrDeleteFriend)
-		return
+		return gamespy.NoResponse{}, ErrDeleteFriend
 	}
 	if !revoked {
-		g.replyError(ErrRevokeNotFriends)
-		return
+		return gamespy.NoResponse{}, ErrRevokeNotFriends
 	}
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	if recipient, ok := sessions[delProfileID32]; ok && recipient.LoggedIn && authorized {
-		sendMessageToSession(BuddyRevoke, g.Profile.ID, recipient, "")
+	recipient, ok := sessions[req.DelProfileID]
+	if !ok || !recipient.LoggedIn || !authorized {
+		return gamespy.NoResponse{}, nil
 	}
+
+	recipient.sendMessage(BuddyRevoke, state.Profile.ID, "", false)
+	return gamespy.NoResponse{}, nil
 }
 
-func (g *GameSpySession) authAddFriend(command common.GameSpyCommand) {
-	fromProfileId, err := strconv.Atoi(command.OtherValues["fromprofileid"])
-	if err != nil {
-		logging.Error(g.ModuleName, "Invalid profile ID string:", aurora.Cyan(fromProfileId))
-		g.replyError(ErrAuthAddBadFrom)
-		return
+type AuthAddRequest struct {
+	Command       string `gs:"authadd"`
+	SessKey       int32  `gs:"sesskey"`
+	FromProfileID uint32 `gs:"fromprofileid"`
+	Signature     string `gs:"sig"`
+	AutoSync      bool   `gs:"autoSync"`
+}
+
+func authAdd(state *GameSpySession, req AuthAddRequest) (gamespy.NoResponse, error) {
+	if !state.LoggedIn {
+		return gamespy.NoResponse{}, ErrNotLoggedIn
 	}
 
-	err = db.AuthFriend(uint32(fromProfileId), g.Profile.ID)
+	err := db.AuthFriend(req.FromProfileID, state.Profile.ID)
 	if err != nil {
-		logging.Error(g.ModuleName, "Sender", aurora.Cyan(fromProfileId), "is not an incoming friend")
-		g.replyError(ErrAuthAddBadFrom)
-		return
+		logging.Error(state.ModuleName, "Sender", aurora.Cyan(req.FromProfileID), "is not an incoming friend")
+		return gamespy.NoResponse{}, ErrAuthAddBadFrom
 	}
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	recipient, ok := sessions[uint32(fromProfileId)]
+	recipient, ok := sessions[req.FromProfileID]
 	if !ok || recipient == nil || !recipient.LoggedIn {
-		logging.Info(g.ModuleName, "Destination is not online")
-		return
+		logging.Info(state.ModuleName, "Destination is not online")
+		return gamespy.NoResponse{}, nil
 	}
 
 	// TODO: see if this should go last
-	g.sendFriendStatus(recipient.Profile.ID, false)
+	state.sendFriendStatus(recipient.Profile.ID, false)
 
-	sendMessageToSession(BuddyAuth, g.Profile.ID, recipient, "")
+	recipient.sendMessage(BuddyAuth, state.Profile.ID, "", false)
 
 	if recipient.isBm1AuthMessageNeeded() {
-		sendMessageToSession(BuddyMessage, g.Profile.ID, recipient, bm1AuthMessage)
+		recipient.sendMessage(BuddyMessage, state.Profile.ID, bm1AuthMessage, false)
 	}
+
+	return gamespy.NoResponse{}, nil
 }
 
-func (g *GameSpySession) setStatus(command common.GameSpyCommand) {
-	status, err := strconv.Atoi(command.CommandValue)
-	if err != nil {
-		logging.Error(g.ModuleName, "Invalid status value")
-		g.replyError(ErrStatus)
-		return
+type StatusRequest struct {
+	Command  int    `gs:"status"`
+	SessKey  int32  `gs:"sesskey"`
+	Status   string `gs:"statstring"`
+	Location string `gs:"locstring"`
+}
+
+func status(state *GameSpySession, req StatusRequest) (gamespy.NoResponse, error) {
+	if !state.LoggedIn {
+		return gamespy.NoResponse{}, ErrNotLoggedIn
 	}
 
-	logging.Notice(g.ModuleName, "New status:", aurora.BrightMagenta(GetStatusString(status)))
-
-	statstring, ok := command.OtherValues["statstring"]
-	if !ok || len(statstring) >= 256 {
-		logging.Warn(g.ModuleName, "Invalid statstring")
-		g.replyError(ErrStatus)
-		return
+	if len(req.Status) >= 256 {
+		logging.Warn(state.ModuleName, "Invalid statstring")
+		return gamespy.NoResponse{}, ErrStatus
 	}
 
-	locstring, ok := command.OtherValues["locstring"]
-	if !ok || len(locstring) >= 256 {
-		logging.Warn(g.ModuleName, "Invalid locstring")
-		g.replyError(ErrStatus)
-		return
+	if len(req.Location) >= 256 {
+		logging.Warn(state.ModuleName, "Invalid locstring")
+		return gamespy.NoResponse{}, ErrStatus
 	}
 
-	g.LocString = locstring
+	state.LocString = req.Location
 
-	ip, _ := common.IPFormatToString(g.RemoteAddr)
-	g.Status = "|s|" + strconv.Itoa(status) + "|ss|" + statstring + "|ls|" + locstring + "|ip|" + ip + "|p|0|qm|0"
+	ip, _ := common.IPFormatToString(state.RemoteAddr)
+	state.Status = "|s|" + strconv.Itoa(req.Command) + "|ss|" + req.Status + "|ls|" + req.Location + "|ip|" + ip + "|p|0|qm|0"
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	friends, err := db.GetFriends(g.Profile.ID, false)
+	friends, err := db.GetFriends(state.Profile.ID, false)
 	if err != nil {
-		return
+		return gamespy.NoResponse{}, err
 	}
 	for _, friend := range friends {
 		if !friend.Authorized {
 			continue
 		}
 
-		g.sendFriendStatus(friend.ID, false)
+		state.sendFriendStatus(friend.ID, false)
 	}
+
+	return gamespy.NoResponse{}, nil
 }
 
-func sendMessageToSession(msgType int, from uint32, session *GameSpySession, msg string) {
-	message := common.CreateGameSpyMessage(common.GameSpyCommand{
-		Command:      "bm",
-		CommandValue: strconv.Itoa(msgType),
-		OtherValues: map[string]string{
-			"f":   strconv.FormatUint(uint64(from), 10),
-			"msg": msg,
-		},
+func (g *GameSpySession) sendMessage(msgType int, from uint32, msg string, buffer bool) {
+	type BuddyMessage struct {
+		Command int    `gs:"bm"`
+		Sender  uint32 `gs:"f"`
+		Message string `gs:"msg"`
+	}
+
+	message := gamespy.Marshal(BuddyMessage{
+		Command: msgType,
+		Sender:  from,
+		Message: msg,
 	})
-	if err := common.SendPacket(ServerName, session.ConnIndex, []byte(message)); err != nil {
+
+	if buffer {
+		g.WriteBuffer += message
+		return
+	}
+
+	err := common.SendPacket(ServerName, g.ConnIndex, []byte(message))
+	if err != nil {
 		logging.Error("GPCM", "Failed to send packet:", err)
-		_ = common.CloseConnection(ServerName, session.ConnIndex)
+		_ = common.CloseConnection(ServerName, g.ConnIndex)
 	}
-}
-
-func sendMessageToSessionBuffer(msgType int, from uint32, session *GameSpySession, msg string) {
-	session.WriteBuffer += common.CreateGameSpyMessage(common.GameSpyCommand{
-		Command:      "bm",
-		CommandValue: strconv.Itoa(msgType),
-		OtherValues: map[string]string{
-			"f":   strconv.FormatUint(uint64(from), 10),
-			"msg": msg,
-		},
-	})
 }
 
 func (g *GameSpySession) sendFriendStatus(profileId uint32, buffer bool) {
@@ -249,12 +257,7 @@ func (g *GameSpySession) sendFriendStatus(profileId uint32, buffer bool) {
 		return
 	}
 
-	f := sendMessageToSession
-	if buffer {
-		f = sendMessageToSessionBuffer
-	}
-
-	f(BuddyStatus, g.Profile.ID, recipient, g.Status)
+	recipient.sendMessage(BuddyStatus, g.Profile.ID, g.Status, buffer)
 }
 
 func (g *GameSpySession) sendLogoutStatus() {
@@ -275,6 +278,45 @@ func (g *GameSpySession) sendLogoutStatus() {
 			return
 		}
 
-		sendMessageToSession(BuddyStatus, g.Profile.ID, recipient, offlineMessage)
+		recipient.sendMessage(BuddyStatus, g.Profile.ID, offlineMessage, false)
+	}
+}
+
+func (g *GameSpySession) sendFriendsInfo() {
+	// send status for unauthorized outgoing friend requests
+	outgoing, err := db.GetFriends(g.Profile.ID, true)
+	if err == nil {
+		for _, friend := range outgoing {
+			if friend.Authorized {
+				continue
+			}
+
+			// TODO: see if it should send their online status
+			g.sendMessage(BuddyStatus, friend.ID, offlineMessage, true)
+		}
+	}
+
+	// send status for incoming friend requests / mutual friends
+	friends, err := db.GetFriends(g.Profile.ID, false)
+	if err != nil {
+		return
+	}
+
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	for _, friend := range friends {
+		if !friend.Authorized {
+			g.sendMessage(BuddyRequest, friend.ID, addFriendMessage, true)
+			continue
+		}
+
+		session, ok := sessions[friend.ID]
+		if !ok || !session.LoggedIn {
+			g.sendMessage(BuddyStatus, friend.ID, offlineMessage, true)
+			continue
+		}
+
+		session.sendFriendStatus(g.Profile.ID, false)
 	}
 }

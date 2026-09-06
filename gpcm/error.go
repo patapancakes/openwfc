@@ -29,6 +29,10 @@ type GPError struct {
 	Fatal       bool
 }
 
+func (e GPError) Error() string {
+	return e.ErrorString
+}
+
 func MakeGPError(errorCode int, errorString string, fatal bool) GPError {
 	return GPError{
 		ErrorCode:   errorCode,

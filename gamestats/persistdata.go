@@ -3,6 +3,7 @@ package gamestats
 import (
 	"database/sql"
 	"owfc/common"
+	"owfc/common/gamespy"
 	"owfc/logging"
 	"strconv"
 	"strings"
@@ -64,7 +65,7 @@ func (g *GameStatsSession) getpd(command common.GameSpyCommand) {
 			return
 		}
 
-		var kv common.KeyValues
+		var kv gamespy.KeyValues
 		kv, modified, err = db.GetGameStatsPersistDataKV(uint32(profileId), ptype, dindex, strings.Split(keys, string(byte(1))))
 
 		data = kv.Encode()
@@ -177,7 +178,7 @@ func (g *GameStatsSession) setpd(command common.GameSpyCommand) {
 
 	var modifiedTime time.Time
 	if command.OtherValues["kv"] == "1" {
-		modifiedTime, err = db.SetGameStatsPersistDataKV(g.Profile.ID, ptype, dindex, common.KeyValuesFromString(dataStr))
+		modifiedTime, err = db.SetGameStatsPersistDataKV(g.Profile.ID, ptype, dindex, gamespy.KeyValuesFromString(dataStr))
 	} else {
 		modifiedTime, err = db.SetGameStatsPersistData(g.Profile.ID, ptype, dindex, dataStr)
 	}

@@ -1,6 +1,9 @@
-package common
+package gamespy
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 type KeyValues []KV
 
@@ -17,8 +20,8 @@ func KeyValuesFromString(s string) KeyValues {
 	}
 
 	var kv KeyValues
-	for i := 0; i < len(split); i += 2 {
-		kv.Set(split[i], split[i+1])
+	for split := range slices.Chunk(split, 2) {
+		kv.Set(split[0], split[1])
 	}
 
 	return kv
@@ -71,7 +74,10 @@ func (kvs *KeyValues) Set(k string, v string) {
 func (kvs KeyValues) Encode() string {
 	var s strings.Builder
 	for _, kv := range kvs {
-		s.WriteString(`\` + kv.K + `\` + kv.V)
+		s.WriteString(`\`)
+		s.WriteString(kv.K)
+		s.WriteString(`\`)
+		s.WriteString(kv.V)
 	}
 
 	return s.String()

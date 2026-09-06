@@ -2,7 +2,7 @@ package database
 
 import (
 	"database/sql"
-	"owfc/common"
+	"owfc/common/gamespy"
 	"slices"
 	"time"
 )
@@ -22,7 +22,7 @@ func (c *Connection) SetGameStatsPersistData(profileId uint32, ptype int, dindex
 	return
 }
 
-func (c *Connection) GetGameStatsPersistDataKV(profileId uint32, ptype int, dindex int, keys []string) (kv common.KeyValues, modified time.Time, err error) {
+func (c *Connection) GetGameStatsPersistDataKV(profileId uint32, ptype int, dindex int, keys []string) (kv gamespy.KeyValues, modified time.Time, err error) {
 	var data string
 	data, modified, err = c.GetGameStatsPersistData(profileId, ptype, dindex)
 	if err != nil {
@@ -34,7 +34,7 @@ func (c *Connection) GetGameStatsPersistDataKV(profileId uint32, ptype int, dind
 	}
 
 	if keys != nil {
-		kv = slices.DeleteFunc(common.KeyValuesFromString(data), func(kv common.KV) bool {
+		kv = slices.DeleteFunc(gamespy.KeyValuesFromString(data), func(kv gamespy.KV) bool {
 			return !slices.Contains(keys, kv.K)
 		})
 	}
@@ -42,8 +42,8 @@ func (c *Connection) GetGameStatsPersistDataKV(profileId uint32, ptype int, dind
 	return
 }
 
-func (c *Connection) SetGameStatsPersistDataKV(profileId uint32, ptype int, dindex int, kvs common.KeyValues) (modified time.Time, err error) {
-	var data common.KeyValues
+func (c *Connection) SetGameStatsPersistDataKV(profileId uint32, ptype int, dindex int, kvs gamespy.KeyValues) (modified time.Time, err error) {
+	var data gamespy.KeyValues
 	data, modified, err = c.GetGameStatsPersistDataKV(profileId, ptype, dindex, nil)
 	if err != nil {
 		if err != sql.ErrNoRows {
