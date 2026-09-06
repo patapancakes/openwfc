@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	dlsActions = map[string]func(fields map[string][]byte, moduleName string) []byte{
+	dlsActions = map[string]func(moduleName string, fields map[string][]byte) []byte{
 		"count":    dlsCount,
 		"list":     dlsList,
 		"contents": dlsContents,
@@ -64,7 +64,7 @@ func handleDownloadEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if actionFunc, exists := dlsActions[strings.ToLower(action)]; exists {
-		reply := actionFunc(fields, moduleName)
+		reply := actionFunc(moduleName, fields)
 
 		w.Header().Set("X-DLS-Host", "dls1.nintendowifi.net")
 		w.Header().Set("Content-Type", "text/plain")
@@ -99,7 +99,7 @@ func handleDownloadEndpoint(w http.ResponseWriter, r *http.Request) {
 	replyHTTPError(w, 400, "400 Bad Request")
 }
 
-func dlsCount(fields map[string][]byte, moduleName string) []byte {
+func dlsCount(moduleName string, fields map[string][]byte) []byte {
 	list, err := getDlsList(string(fields["rhgamecd"]))
 	if err != nil {
 		logging.Error("Unknown game:", aurora.Cyan(fields["rhgamecd"]))
@@ -111,7 +111,7 @@ func dlsCount(fields map[string][]byte, moduleName string) []byte {
 	return []byte(strconv.Itoa(len(list)))
 }
 
-func dlsList(fields map[string][]byte, moduleName string) []byte {
+func dlsList(moduleName string, fields map[string][]byte) []byte {
 	list, err := getDlsList(string(fields["rhgamecd"]))
 	if err != nil {
 		logging.Error("Unknown game:", aurora.Cyan(fields["rhgamecd"]))
@@ -223,7 +223,7 @@ func filterDlsList(list [][]string, fields map[string][]byte) [][]string {
 	return list
 }
 
-func dlsContents(fields map[string][]byte, moduleName string) []byte {
+func dlsContents(moduleName string, fields map[string][]byte) []byte {
 	dlcFolder := filepath.Join(dlcDir, string(fields["rhgamecd"]))
 
 	contents, ok := fields["contents"]

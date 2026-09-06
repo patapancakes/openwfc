@@ -168,6 +168,6 @@ func handleNASTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("NODE", "authserver-service.authserver.svc.cluster.local")
 	w.Header().Set("Server", "Nintendo")
 
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(response))
 }

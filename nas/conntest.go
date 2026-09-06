@@ -22,6 +22,6 @@ func handleConnectionTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
 	w.Header().Set("X-Organization", "Nintendo")
 	w.Header().Set("Connection", "Keep-Alive")
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(response))
 }
