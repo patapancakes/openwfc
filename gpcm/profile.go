@@ -19,7 +19,7 @@ type GetProfileResponse struct {
 	Command    string `gs:"pi"`
 	ProfileID  uint32 `gs:"profileid"`
 	Nick       string `gs:"nick"`
-	UserID     uint64 `gs:"userid"`
+	UserID     uint32 `gs:"userid"`
 	Email      string `gs:"email"`
 	Signature  string `gs:"sig"`
 	UniqueNick string `gs:"uniquenick"`
@@ -61,7 +61,7 @@ func getProfile(state *GameSpySession, req GetProfileRequest) (GetProfileRespons
 	return GetProfileResponse{
 		ProfileID:  profile.ID,
 		Nick:       profile.UniqueNick(),
-		UserID:     profile.UserID,
+		UserID:     profile.ID,
 		Email:      profile.Email(),
 		Signature:  common.RandomHexString(32),
 		UniqueNick: profile.UniqueNick(),

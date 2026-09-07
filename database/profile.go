@@ -8,15 +8,15 @@ import (
 )
 
 const (
-	insertProfile    = `INSERT INTO profiles (user_id, gsbrcd) VALUES (?, ?) RETURNING id`
-	getProfile       = `SELECT user_id, gsbrcd, firstname, lastname FROM profiles WHERE id = ?`
-	getUserProfileID = `SELECT id FROM profiles WHERE user_id = ? AND gsbrcd = ?`
+	insertProfile    = `INSERT INTO profiles (wfcid, gsbrcd) VALUES (?, ?) RETURNING id`
+	getProfile       = `SELECT wfcid, gsbrcd, firstname, lastname FROM profiles WHERE id = ?`
+	getUserProfileID = `SELECT id FROM profiles WHERE wfcid = ? AND gsbrcd = ?`
 	updateProfile    = `UPDATE profiles SET firstname = CASE WHEN ? THEN ? ELSE firstname END, lastname = CASE WHEN ? THEN ? ELSE lastname END WHERE id = ?`
 )
 
 type Profile struct {
 	ID        uint32
-	UserID    uint64
+	WFCID     uint64
 	GsbrCode  string // should be removed and dependent fields added to db
 	FirstName string
 	LastName  string
@@ -27,17 +27,17 @@ func (p Profile) Email() string {
 }
 
 func (p Profile) UniqueNick() string {
-	return common.Base32Encode(p.UserID) + p.GsbrCode
+	return common.Base32Encode(p.WFCID) + p.GsbrCode
 }
 
-func (c *Connection) CreateProfile(userId uint64, gsbrcd string) (uint32, error) {
+func (c *Connection) CreateProfile(wfcId uint64, gsbrcd string) (uint32, error) {
 	profile := Profile{
-		UserID:   userId,
+		WFCID:    wfcId,
 		GsbrCode: gsbrcd,
 	}
 
 	var id uint32
-	err := c.pool.QueryRowContext(c.ctx, insertProfile, profile.UserID, profile.GsbrCode).Scan(&id)
+	err := c.pool.QueryRowContext(c.ctx, insertProfile, profile.WFCID, profile.GsbrCode).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -48,7 +48,7 @@ func (c *Connection) CreateProfile(userId uint64, gsbrcd string) (uint32, error)
 func (c *Connection) GetProfile(profileId uint32) (Profile, error) {
 	var profile Profile
 	var firstname sql.NullString
-	err := c.pool.QueryRowContext(c.ctx, getProfile, profileId).Scan(&profile.UserID, &profile.GsbrCode, &firstname, &profile.LastName)
+	err := c.pool.QueryRowContext(c.ctx, getProfile, profileId).Scan(&profile.WFCID, &profile.GsbrCode, &firstname, &profile.LastName)
 	if err != nil {
 		return Profile{}, err
 	}
@@ -58,9 +58,9 @@ func (c *Connection) GetProfile(profileId uint32) (Profile, error) {
 	return profile, nil
 }
 
-func (c *Connection) GetProfileID(userId uint64, gsbrcd string) (uint32, error) {
+func (c *Connection) GetProfileID(wfcId uint64, gsbrcd string) (uint32, error) {
 	var id uint32
-	err := c.pool.QueryRowContext(c.ctx, getUserProfileID, userId, gsbrcd).Scan(&id)
+	err := c.pool.QueryRowContext(c.ctx, getUserProfileID, wfcId, gsbrcd).Scan(&id)
 	if err != nil {
 		return 0, err
 	}

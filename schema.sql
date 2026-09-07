@@ -99,14 +99,14 @@ CREATE TABLE IF NOT EXISTS `mario_kart_wii_sake` (
 -- Dumping structure for table wfc.profiles
 CREATE TABLE IF NOT EXISTS `profiles` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` bigint(20) unsigned NOT NULL,
+  `wfcid` bigint(20) unsigned NOT NULL,
   `gsbrcd` char(11) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
   `firstname` tinytext CHARACTER SET ascii COLLATE ascii_general_ci DEFAULT NULL,
   `lastname` tinytext CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL DEFAULT '',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `user_id_gsbrcd` (`user_id`,`gsbrcd`),
-  CONSTRAINT `FK_profiles_users` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=1000000000 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  UNIQUE KEY `wfcid_gsbrcd` (`wfcid`,`gsbrcd`),
+  CONSTRAINT `FK_profiles_users` FOREIGN KEY (`wfcid`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Data exporting was unselected.
 

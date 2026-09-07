@@ -55,7 +55,7 @@ type LoginResponse struct {
 	Command     int    `gs:"lc"`
 	SessKey     int32  `gs:"sesskey"`
 	Proof       string `gs:"proof"`
-	UserID      uint64 `gs:"userid"`
+	UserID      uint32 `gs:"userid"`
 	ProfileID   uint32 `gs:"profileid"`
 	UniqueNick  string `gs:"uniquenick"`
 	LoginTicket string `gs:"lt"`
@@ -79,7 +79,7 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 		return LoginResponse{}, ErrLogin
 	}
 
-	logging.Info(state.ModuleName, "Game name:", aurora.Cyan(state.GameName))
+	logging.Info(state.ModuleName, "Game name:", aurora.Cyan(req.GameName))
 
 	state.GameName = req.GameName
 	state.GameCode = common.NullTerminatedString(authTokenObj.GameCode[:])
@@ -95,9 +95,8 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 
 	state.InGameName = common.UTF16Decode(authTokenObj.InGameScreenName[:], endianness)
 
-	if state.UnitCode == UnitCodeDS {
-		state.HostPlatform = "DS"
-	} else {
+	state.HostPlatform = "DS"
+	if state.UnitCode == UnitCodeWii {
 		state.HostPlatform = "Wii"
 	}
 
@@ -106,7 +105,7 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 	logging.Event(
 		"received_login_info",
 		map[string]any{
-			"user_id":      authTokenObj.UserID,
+			"wfc_id":       authTokenObj.WFCID,
 			"game_name":    state.GameName,
 			"wii_number":   state.ConsoleFriendCode,
 			"in_game_name": state.InGameName,
@@ -136,7 +135,7 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 		return LoginResponse{}, ErrLogin
 	}
 
-	logging.Notice("DATABASE", "Log in GameSpy profile:", aurora.Cyan(authTokenObj.UserID), "-", aurora.Cyan(authTokenObj.ProfileID))
+	logging.Notice("DATABASE", "Log in GameSpy profile:", aurora.Cyan(authTokenObj.WFCID), "-", aurora.Cyan(authTokenObj.ProfileID))
 
 	state.ModuleName = "GPCM:" + strconv.FormatInt(int64(state.Profile.ID), 10) + "*"
 	state.ModuleName += "/" + common.CalcFriendCodeString(state.Profile.ID, state.Profile.GsbrCode[:4]) + "*"
@@ -178,12 +177,6 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 	state.ModuleName = "GPCM:" + strconv.FormatInt(int64(state.Profile.ID), 10)
 	state.ModuleName += "/" + common.CalcFriendCodeString(state.Profile.ID, state.Profile.GsbrCode[:4])
 
-	replyUserId := state.Profile.UserID
-	if state.UnitCode == UnitCodeDS {
-		// Workaround for SDK bug
-		replyUserId = 0
-	}
-
 	logging.Event(
 		"logged_in",
 		map[string]any{
@@ -199,7 +192,7 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 
 		SessKey:     state.SessionKey,
 		Proof:       proof,
-		UserID:      replyUserId,
+		UserID:      state.Profile.ID,
 		ProfileID:   state.Profile.ID,
 		UniqueNick:  state.Profile.UniqueNick(),
 		LoginTicket: state.LoginTicket,

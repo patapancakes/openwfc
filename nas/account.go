@@ -188,9 +188,9 @@ func acLogin(moduleName string, req LoginRequest) (LoginResponse, error) {
 
 	var token common.NASAuthToken
 
-	token.UserID = req.UserID
+	token.WFCID = req.UserID
 
-	user, ok := db.GetUser(token.UserID)
+	user, ok := db.GetUser(token.WFCID)
 	if !ok {
 		resp.ReturnCode = UserIDUnknown
 		return resp, fmt.Errorf("unknown userid")
@@ -310,7 +310,7 @@ func acLogin(moduleName string, req LoginRequest) (LoginResponse, error) {
 
 	resp.Token = token.Marshal()
 
-	logging.Notice(moduleName, "Login", console, aurora.Cyan(token.UserID), aurora.Cyan(req.GameSpyCode), "name:", aurora.Cyan(name))
+	logging.Notice(moduleName, "Login", console, aurora.Cyan(token.WFCID), aurora.Cyan(req.GameSpyCode), "name:", aurora.Cyan(name))
 
 	return resp, nil
 }

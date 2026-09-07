@@ -45,7 +45,7 @@ var (
 
 type NASAuthToken struct {
 	IssueTime         uint64
-	UserID            uint64
+	WFCID             uint64
 	ProfileID         uint32
 	ConsoleFriendCode uint64
 	Region            byte
