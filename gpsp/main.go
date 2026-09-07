@@ -15,7 +15,7 @@ var ServerName = "gpsp"
 var (
 	db database.Connection
 
-	handlers = gamespy.Router{
+	handlers = map[string]gamespy.HandlerFunc{
 		"ka": gamespy.Handle(gpcm.KeepAlive),
 
 		"otherslist": gamespy.Handle(othersList),

@@ -1,92 +1,82 @@
 package nas
 
 import (
-	"encoding/binary"
-	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"owfc/common"
-	"owfc/logging"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/logrusorgru/aurora/v3"
 )
 
-func parseAuthRequest(moduleName string, r *http.Request) (map[string][]byte, error) {
-	err := r.ParseForm()
-	if err != nil {
-		logging.Error(moduleName, "Failed to parse form")
-		return nil, errors.New("failed to parse form")
-	}
+func Unmarshal[T any](param url.Values) (T, error) {
+	var out T
 
-	// Need to know this here to determine UTF-16 endianness (LE for DS, BE for Wii)
-	// unitcd 0 = DS, 1 = Wii
-	isWii := false
-	if unitcdValues, ok := r.PostForm["unitcd"]; ok {
-		unitcdDecoded, err := common.Base64DwcEncoding.DecodeString(unitcdValues[0])
-		if err != nil {
-			logging.Error(moduleName, "Invalid unitcd string in form")
-			return nil, errors.New("invalid unitcd string in form")
-		}
-		isWii = len(unitcdDecoded) != 1 || unitcdDecoded[0] != '0'
-	}
+	unmarshalStruct(reflect.ValueOf(&out).Elem(), param)
 
-	var endianness binary.ByteOrder = binary.LittleEndian
-	if isWii {
-		endianness = binary.BigEndian
-	}
-
-	fields := map[string][]byte{}
-	for key, values := range r.PostForm {
-		if len(values) != 1 {
-			logging.Warn(moduleName, "Ignoring none or multiple POST form values:", aurora.Cyan(key).String()+":", aurora.Cyan(values))
-			continue
-		}
-
-		if strings.HasPrefix(key, "_") {
-			// Values unique to CTGP/the Wiimmfi payload. Ignored for compatibility reasons.
-			continue
-		}
-
-		parsed, err := common.Base64DwcEncoding.DecodeString(values[0])
-		if err != nil {
-			logging.Error(moduleName, "Invalid POST form value:", aurora.Cyan(key).String()+":", aurora.Cyan(values[0]))
-			return nil, errors.New("invalid POST form value: " + key)
-		}
-
-		fields[key] = parsed
-
-		reported := string(parsed)
-		if key == "ingamesn" || key == "devname" || key == "words" {
-			// Special handling required for reporting the UTF-16 strings
-			reported = common.UTF16Decode(parsed, endianness)
-		}
-		logging.Info(moduleName, aurora.Cyan(key).String()+":", aurora.Cyan(reported))
-	}
-
-	return fields, nil
+	return out, nil
 }
 
-func writeAuthResponse(w http.ResponseWriter, reply map[string]string) {
-	var response []byte
-	param := url.Values{}
-	for key, value := range reply {
-		param.Set(key, common.Base64DwcEncoding.EncodeToString([]byte(value)))
+func unmarshalStruct(v reflect.Value, param url.Values) error {
+	for field, v := range v.Fields() {
+		if field.Anonymous && v.Kind() == reflect.Struct {
+			unmarshalStruct(v, param)
+			continue
+		}
+
+		key := field.Tag.Get("nas")
+		value, err := common.Base64DwcEncoding.DecodeString(param.Get(key))
+		if err != nil || len(value) == 0 {
+			continue
+		}
+
+		err = common.PutReflectString(v, string(value))
+		if err != nil {
+			return err
+		}
 	}
-	response = []byte(param.Encode())
-	response = []byte(strings.ReplaceAll(string(response), "%2A", "*"))
 
-	// DWC treats the response like a null terminated string
-	response = append(response, 0x00)
+	return nil
+}
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
-	_, err := w.Write(response)
-	if err != nil {
-		logging.Error("NAS", "Error writing response:", err)
+func Marshal(T any) string {
+	param := url.Values{}
+
+	marshalStruct(&param, reflect.ValueOf(T))
+
+	return strings.ReplaceAll(param.Encode(), "%2A", "*") + "\x00"
+}
+
+func marshalStruct(param *url.Values, v reflect.Value) {
+	for field, v := range v.Fields() {
+		if field.Anonymous && v.Kind() == reflect.Struct {
+			marshalStruct(param, v)
+			continue
+		}
+
+		key := field.Tag.Get("nas")
+		if key == "" {
+			continue
+		}
+
+		var s string
+		switch v.Kind() {
+		case reflect.String:
+			s = v.String()
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			s = strconv.FormatUint(v.Uint(), 10)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			s = strconv.FormatInt(v.Int(), 10)
+		case reflect.Bool:
+			str := "0"
+			if v.Bool() {
+				str = "1"
+			}
+
+			s = str
+		}
+		param.Set(key, common.Base64DwcEncoding.EncodeToString([]byte(s)))
 	}
 }
 

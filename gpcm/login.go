@@ -51,7 +51,6 @@ type LoginRequest struct {
 	NamespaceID int    `gs:"namespaceid"`
 	ID          int    `gs:"id"`
 }
-
 type LoginResponse struct {
 	Command     int    `gs:"lc"`
 	SessKey     int32  `gs:"sesskey"`
@@ -80,8 +79,9 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 		return LoginResponse{}, ErrLogin
 	}
 
-	state.GameName = req.GameName
 	logging.Info(state.ModuleName, "Game name:", aurora.Cyan(state.GameName))
+
+	state.GameName = req.GameName
 	state.GameCode = common.NullTerminatedString(authTokenObj.GameCode[:])
 	state.Region = authTokenObj.Region
 	state.Language = authTokenObj.Lang

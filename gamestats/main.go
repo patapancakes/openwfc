@@ -45,7 +45,7 @@ var (
 	sessionsByConnIndex = make(map[uint64]*GameStatsSession)
 	mutex               = deadlock.RWMutex{}
 
-	handlers = gamespy.Router{
+	handlers = map[string]gamespy.HandlerFunc{
 		"ka": gamespy.Handle(gpcm.KeepAlive),
 
 		"auth":  gamespy.Handle(auth),

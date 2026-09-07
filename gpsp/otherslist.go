@@ -16,13 +16,11 @@ type OthersListRequest struct {
 	OtherPIDsCount int    `gs:"numopids"`
 	OtherPIDs      string `gs:"opids"`
 }
-
 type OthersListResponse struct {
 	Command string `gs:"otherslist"`
 	Entries []OthersListResponseEntry
 	Done    string `gs:"oldone"`
 }
-
 type OthersListResponseEntry struct {
 	OtherID    uint32 `gs:"o"`
 	UniqueNick string `gs:"uniquenick"`

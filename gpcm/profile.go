@@ -15,7 +15,6 @@ type GetProfileRequest struct {
 	ProfileID uint32 `gs:"profileid"`
 	ID        int    `gs:"id"`
 }
-
 type GetProfileResponse struct {
 	Command    string `gs:"pi"`
 	ProfileID  uint32 `gs:"profileid"`

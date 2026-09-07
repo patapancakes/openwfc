@@ -104,7 +104,7 @@ type DelBuddyRequest struct {
 	DelProfileID uint32 `gs:"delprofileid"`
 }
 
-func delBuddy(state *GameSpySession, req DelBuddyRequest) (gamespy.NoResponse, error) {
+func deleteBuddy(state *GameSpySession, req DelBuddyRequest) (gamespy.NoResponse, error) {
 	if !state.LoggedIn {
 		return gamespy.NoResponse{}, ErrNotLoggedIn
 	}

@@ -53,7 +53,7 @@ var (
 	sessionsByConnIndex = map[uint64]*GameSpySession{}
 	mutex               = deadlock.Mutex{}
 
-	handlers = gamespy.Router{
+	handlers = map[string]gamespy.HandlerFunc{
 		"ka":    gamespy.Handle(KeepAlive),
 		"login": gamespy.Handle(login),
 
@@ -61,7 +61,7 @@ var (
 		"status":     gamespy.Handle(status),
 		"authadd":    gamespy.Handle(authAdd),
 		"addbuddy":   gamespy.Handle(addBuddy),
-		"delbuddy":   gamespy.Handle(delBuddy),
+		"delbuddy":   gamespy.Handle(deleteBuddy),
 		"bm":         gamespy.Handle(buddyMessage),
 		"getprofile": gamespy.Handle(getProfile),
 	}

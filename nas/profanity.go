@@ -104,106 +104,80 @@ func isProfanityFileCached() bool {
 	return profanityFileLines != nil && !fileInfo.ModTime().After(lastModTime)
 }
 
-func handleAuthProfanityEndpoint(w http.ResponseWriter, r *http.Request) {
-	moduleName := getModuleName(r)
+type ProfanityRequest struct {
+	NASRequest
+	Region   string `nas:"wregion"`
+	Encoding string `nas:"wenc"`
+	Type     string `nas:"type"`
+	Words    string `nas:"words"`
+}
+type ProfanityResponse struct {
+	NASResponse
+	Words string `nas:"prwords"`
 
-	form, err := parseAuthRequest(moduleName, r)
+	WordsA string `nas:"prwordsA"`
+	WordsC string `nas:"prwordsC"`
+	WordsE string `nas:"prwordsE"`
+	WordsJ string `nas:"prwordsJ"`
+	WordsK string `nas:"prwordsK"`
+	WordsP string `nas:"prwordsP"`
+}
+
+func handleAuthProfanityEndpoint(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
 	if err != nil {
 		replyHTTPError(w, 400, "400 Bad Request")
 		return
 	}
 
-	unitcd := form["unitcd"]
-	var wordsEncoding string
-	var wordsDefaultEncoding string
-	if len(unitcd) != 1 || unitcd[0] != '0' {
-		wordsEncoding = "UTF-16BE"
-		wordsDefaultEncoding = "UTF-16BE"
-	} else {
-		wordsEncoding = "UTF-16LE"
-		wordsDefaultEncoding = "UTF-16LE"
-	}
-
-	if wencValues, ok := form["wenc"]; ok {
-		// It's okay for this to error, the real server
-		// just falls back to the default encoding in
-		// this case even if it cant properly handle it
-		wencDecoded, err := common.Base64DwcEncoding.DecodeString(string(wencValues[0]))
-		if err == nil {
-			wordsEncoding = string(wencDecoded)
-		}
-	}
-
-	if wordsEncoding != "UTF-8" && wordsEncoding != "UTF-16LE" && wordsEncoding != "UTF-16BE" {
-		wordsEncoding = wordsDefaultEncoding
-	}
-
-	// It's okay for this to not exist/be valid, the real
-	// server will just treat the missing input as a single
-	// non-profane word
-	wordsBytes := []byte{}
-	if wordsValues, ok := form["words"]; ok {
-		wordsDecoded, err := common.Base64DwcEncoding.DecodeString(string(wordsValues[0]))
-		if err == nil {
-			wordsBytes = wordsDecoded
-		}
-	}
-
-	// This field is entirely optional, unsure what
-	// specifically it does. Adds extra data to the
-	// reply, probably used for handling the word
-	// list differently for different regions?
-	var wordsRegion string
-	if wordsRegionValues, ok := form["wregion"]; ok {
-		wordsRegionDecoded, err := common.Base64DwcEncoding.DecodeString(string(wordsRegionValues[0]))
-		if err == nil {
-			wordsRegion = string(wordsRegionDecoded)
-		}
+	req, err := Unmarshal[ProfanityRequest](r.PostForm)
+	if err != nil {
+		replyHTTPError(w, 400, "400 Bad Request")
+		return
 	}
 
 	var words string
-	switch wordsEncoding {
+	switch req.Encoding {
 	case "UTF-8":
-		words = string(wordsBytes)
+		words = req.Words
 	case "UTF-16LE":
-		words = common.UTF16Decode(wordsBytes, binary.LittleEndian)
+		words = common.UTF16Decode([]byte(req.Words), binary.LittleEndian)
 	case "UTF-16BE":
-		words = common.UTF16Decode(wordsBytes, binary.BigEndian)
+		words = common.UTF16Decode([]byte(req.Words), binary.BigEndian)
+	default:
+		replyHTTPError(w, 400, "400 Bad Request")
+		return
 	}
 
-	// TODO - Handle wtype? Unsure what this field does, seems to always be an empty string
+	resp := ProfanityResponse{NASResponse: NASResponse{
+		DateTime:   getDateTime(),
+		ReturnCode: "000",
+	}}
 
 	var prwords strings.Builder
 	for word := range strings.SplitSeq(words, "\t") {
-		if isBadWord, _ := IsBadWord(word); isBadWord {
+		profane, _ := IsBadWord(word)
+		if profane {
 			prwords.WriteString("1")
-		} else {
-			prwords.WriteString("0")
+			resp.ReturnCode = "040"
+			continue
 		}
+
+		prwords.WriteString("0")
 	}
 
-	returncd := ""
-	if strings.Contains(prwords.String(), "1") {
-		returncd = "040"
-	} else {
-		returncd = "000"
-	}
-
-	reply := map[string]string{
-		"returncd": returncd,
-		"prwords":  prwords.String(),
-	}
+	resp.Words = prwords.String()
 
 	// Only known value of this field that works this way
-	if wordsRegion == "A" {
+	if req.Region == "A" {
 		// TODO - The real server seems to handle the input words differently per region? These values are supposed to differ from prwords
-		reply["prwordsA"] = prwords.String()
-		reply["prwordsC"] = prwords.String()
-		reply["prwordsE"] = prwords.String()
-		reply["prwordsJ"] = prwords.String()
-		reply["prwordsK"] = prwords.String()
-		reply["prwordsP"] = prwords.String()
+		resp.WordsA = resp.Words
+		resp.WordsC = resp.Words
+		resp.WordsE = resp.Words
+		resp.WordsJ = resp.Words
+		resp.WordsK = resp.Words
+		resp.WordsP = resp.Words
 	}
 
-	writeAuthResponse(w, reply)
+	w.Write([]byte(Marshal(resp)))
 }

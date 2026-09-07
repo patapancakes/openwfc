@@ -21,7 +21,6 @@ type GetPersistDataRequest struct {
 	LocalID   int    `gs:"lid"`
 	Modified  int64  `gs:"mod"`
 }
-
 type GetPersistDataResponse struct {
 	Command   bool   `gs:"getpdr"` // success
 	LocalID   int    `gs:"lid"`
@@ -102,7 +101,6 @@ type SetPersistDataRequest struct {
 	Length    int    `gs:"length"`
 	Data      string `gs:"data,raw"`
 }
-
 type SetPersistDataResponse struct {
 	Command   bool   `gs:"setpdr"` // success
 	LocalID   int    `gs:"lid"`

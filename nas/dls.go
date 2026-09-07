@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"owfc/common"
 	"owfc/logging"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -16,134 +19,117 @@ import (
 )
 
 var (
-	dlsActions = map[string]func(moduleName string, fields map[string][]byte) []byte{
-		"count":    dlsCount,
-		"list":     dlsList,
-		"contents": dlsContents,
+	dlsHandlers = map[string]DownloadHandlerFunc{
+		"count":    handleDownload(dlsCount),
+		"list":     handleDownload(dlsList),
+		"contents": handleDownload(dlsContents),
 	}
 
 	dlcDir = "./dlc"
 )
 
+type DownloadHandlerFunc func(moduleName string, req url.Values) ([]byte, error)
+
+func handleDownload[reqT any](handler func(string, reqT) ([]byte, error)) DownloadHandlerFunc {
+	return func(moduleName string, req url.Values) ([]byte, error) {
+		var authToken common.NASAuthToken
+		token, _ := common.Base64DwcEncoding.DecodeString(req.Get("token"))
+		err := authToken.Unmarshal(string(token))
+		if err != nil {
+			return nil, err
+		}
+
+		in, err := Unmarshal[reqT](req)
+		if err != nil {
+			return nil, err
+		}
+
+		return handler(moduleName, in)
+	}
+}
+
 func handleDownloadEndpoint(w http.ResponseWriter, r *http.Request) {
 	moduleName := "DLS:" + r.RemoteAddr
 
-	fields, err := parseAuthRequest(moduleName, r)
+	action, err := common.Base64DwcEncoding.DecodeString(r.FormValue("action"))
 	if err != nil {
-		replyHTTPError(w, 400, "400 Bad Request")
-		return
-	}
-
-	authToken := string(fields["token"])
-	if authToken == "" {
-		logging.Error(moduleName, "Missing or invalid token")
-		replyHTTPError(w, 400, "400 Bad Request")
-		return
-	}
-
-	var authTokenObj common.NASAuthToken
-	err = authTokenObj.Unmarshal(string(authToken))
-	if err != nil {
-		logging.Error(moduleName, "Failed to unmarshal auth token:", err)
-		replyHTTPError(w, 400, "400 Bad Request")
-		return
-	}
-
-	action := string(fields["action"])
-	if action == "" {
 		logging.Error(moduleName, "No action in form")
 		replyHTTPError(w, 400, "400 Bad Request")
-		return
 	}
 
-	rhgamecd, ok := fields["rhgamecd"]
-	if !ok || !isValidRHGameCode(string(rhgamecd)) {
-		logging.Error(moduleName, "Missing or invalid rhgamecd")
+	handler, ok := dlsHandlers[string(action)]
+	if !ok {
+		logging.Error(moduleName, "Unknown action:", aurora.Cyan(string(action)))
 		replyHTTPError(w, 400, "400 Bad Request")
-		return
 	}
 
-	if actionFunc, exists := dlsActions[strings.ToLower(action)]; exists {
-		reply := actionFunc(moduleName, fields)
+	resp, err := handler(moduleName, r.PostForm)
+	if err != nil {
+		logging.Error(moduleName, "Action", aurora.Cyan(string(action)), "returned error:", aurora.Cyan(err))
 
-		w.Header().Set("X-DLS-Host", "dls1.nintendowifi.net")
-		w.Header().Set("Content-Type", "text/plain")
-
-		if strings.ToLower(action) == "contents" {
-			// TODO: return error from handlers maybe?
-			if reply == nil {
-				replyHTTPError(w, 404, "404 Not Found")
-				return
-			}
-
-			w.Header().Set("Content-Type", "application/x-dsdl")
-			w.Header().Set("Content-Disposition", "attachment; filename=\""+string(fields["contents"])+"\"")
+		if os.IsNotExist(err) {
+			replyHTTPError(w, 404, "400 Not Found")
+			return
 		}
-
-		w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
-
-		// TODO: fix crazy edge case, sending WH050_100_2011-03-07 in whole
-		// causes a slice bounds out of range runtime error
-		const chunkLen = 1024 * 4
-		for i := 0; i < len(reply); i += chunkLen {
-			_, err := w.Write(reply[i:min(i+chunkLen, len(reply))])
-			if err != nil {
-				logging.Error(moduleName, "Error writing response:", err)
-				break
-			}
-		}
-		return
 	}
 
-	logging.Error(moduleName, "Unknown action:", aurora.Cyan(action))
-	replyHTTPError(w, 400, "400 Bad Request")
+	w.Header().Set("X-DLS-Host", "dls1.nintendowifi.net")
+	w.Header().Set("Content-Length", strconv.Itoa(len(resp)))
+	for chunk := range slices.Chunk([]byte(resp), 1024*4) {
+		w.Write(chunk)
+	}
 }
 
-func dlsCount(moduleName string, fields map[string][]byte) []byte {
-	list, err := getDlsList(string(fields["rhgamecd"]))
-	if err != nil {
-		logging.Error("Unknown game:", aurora.Cyan(fields["rhgamecd"]))
-		return []byte{'0'}
-	}
-
-	list = filterDlsList(list, fields)
-
-	return []byte(strconv.Itoa(len(list)))
+type DownloadRequest struct {
+	GameCode string `nas:"rhgamecd"`
+}
+type DownloadAttributes struct {
+	Attribute1 string `nas:"attr1"`
+	Attribute2 string `nas:"attr2"`
+	Attribute3 string `nas:"attr3"`
+}
+type CountRequest struct {
+	DownloadRequest
+	DownloadAttributes
 }
 
-func dlsList(moduleName string, fields map[string][]byte) []byte {
-	list, err := getDlsList(string(fields["rhgamecd"]))
+func dlsCount(moduleName string, req CountRequest) ([]byte, error) {
+	if !isValidRHGameCode(req.GameCode) {
+		return []byte{'0'}, fmt.Errorf("invalid rhgamecd: %s", req.GameCode)
+	}
+
+	list, err := getDlsList(req.GameCode)
 	if err != nil {
-		logging.Error("Unknown game:", aurora.Cyan(fields["rhgamecd"]))
-		return nil
+		return []byte{'0'}, fmt.Errorf("unknown game: %s", req.GameCode)
 	}
 
-	list = filterDlsList(list, fields)
+	list = filterDlsList(list, req.Attribute1, req.Attribute2, req.Attribute3)
 
-	offset, ok := fields["offset"]
-	if ok {
-		n, err := strconv.Atoi(string(offset))
-		if err != nil {
-			return nil
-		}
-		if n < 0 || n > len(list) {
-			return nil
-		}
+	return []byte(strconv.Itoa(len(list))), nil
+}
 
-		list = list[n:]
+type ListRequest struct {
+	DownloadRequest
+	DownloadAttributes
+	Offset int `nas:"offset"`
+	Count  int `nas:"num"`
+}
+
+func dlsList(moduleName string, req ListRequest) ([]byte, error) {
+	if !isValidRHGameCode(req.GameCode) {
+		return nil, fmt.Errorf("invalid rhgamecd: %s", req.GameCode)
 	}
 
-	num, ok := fields["num"]
-	if ok {
-		n, err := strconv.Atoi(string(num))
-		if err != nil {
-			return nil
-		}
-		if n < 0 || n > len(list) {
-			return nil
-		}
+	list, err := getDlsList(req.GameCode)
+	if err != nil {
+		return nil, fmt.Errorf("unknown game: %s", req.GameCode)
+	}
 
-		list = list[:n]
+	list = filterDlsList(list, req.Attribute1, req.Attribute2, req.Attribute3)
+
+	list = list[min(req.Offset, len(list)):]
+	if req.Count != 0 {
+		list = list[:min(req.Count, len(list))]
 	}
 
 	buf := new(bytes.Buffer)
@@ -153,12 +139,12 @@ func dlsList(moduleName string, fields map[string][]byte) []byte {
 
 	err = cw.WriteAll(list)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	buf.WriteString("\r\n")
 
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 func getDlsList(rhgamecd string) ([][]string, error) {
@@ -195,7 +181,7 @@ func getDlsList(rhgamecd string) ([][]string, error) {
 	return list, nil
 }
 
-func filterDlsList(list [][]string, fields map[string][]byte) [][]string {
+func filterDlsList(list [][]string, attr1, attr2, attr3 string) [][]string {
 	filter := func(value string, index int) {
 		dst := list[:0]
 		for _, entry := range list {
@@ -207,41 +193,30 @@ func filterDlsList(list [][]string, fields map[string][]byte) [][]string {
 		list = dst
 	}
 
-	attr1, ok := fields["attr1"]
-	if ok {
-		filter(string(attr1), 2)
+	if attr1 != "" {
+		filter(attr1, 2)
 	}
-	attr2, ok := fields["attr2"]
-	if ok {
-		filter(string(attr2), 3)
+	if attr2 != "" {
+		filter(attr2, 3)
 	}
-	attr3, ok := fields["attr3"]
-	if ok {
-		filter(string(attr3), 4)
+	if attr3 != "" {
+		filter(attr3, 4)
 	}
 
 	return list
 }
 
-func dlsContents(moduleName string, fields map[string][]byte) []byte {
-	dlcFolder := filepath.Join(dlcDir, string(fields["rhgamecd"]))
+type ContentsRequest struct {
+	DownloadRequest
+	Contents string `nas:"contents"`
+}
 
-	contents, ok := fields["contents"]
-	if !ok {
-		logging.Error(moduleName, "Missing contents")
-		return nil
+func dlsContents(moduleName string, req ContentsRequest) ([]byte, error) {
+	if !isValidRHGameCode(req.GameCode) {
+		return nil, fmt.Errorf("invalid rhgamecd: %s", req.GameCode)
 	}
 
-	file, err := os.ReadFile(filepath.Join(dlcFolder, filepath.Base(string(contents))))
-	if err != nil {
-		if os.IsNotExist(err) {
-			logging.Error(moduleName, "Unknown file:", aurora.Cyan(fields["contents"]))
-		}
-
-		return nil
-	}
-
-	return file
+	return os.ReadFile(filepath.Join(dlcDir, req.GameCode, filepath.Base(req.Contents)))
 }
 
 func isValidRHGameCode(rhgamecd string) bool {

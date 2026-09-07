@@ -2,8 +2,6 @@ package gamespy
 
 type HandlerFunc func(state any, req string) (string, error)
 
-type Router map[string]HandlerFunc
-
 type NoResponse struct{}
 
 func Handle[stateT, reqT, respT any](handler func(stateT, reqT) (respT, error)) HandlerFunc {

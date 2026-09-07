@@ -19,7 +19,6 @@ type AuthRequest struct {
 	Port     uint16 `gs:"port"`
 	ID       int    `gs:"id"`
 }
-
 type AuthResponse struct {
 	Command int    `gs:"lc"`
 	SessKey int32  `gs:"sesskey"`
@@ -64,7 +63,6 @@ type AuthProfileRequest struct {
 	Response  string `gs:"resp"`
 	LocalID   int    `gs:"lid"`
 }
-
 type AuthProfileResponse struct {
 	Command uint32 `gs:"pauthr"`
 	LocalID int    `gs:"lid"`

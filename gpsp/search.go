@@ -28,12 +28,10 @@ type SearchRequest struct {
 
 	Skip int `gs:"skip"`
 }
-
 type SearchResponse struct {
 	Entries []SearchResponseEntry
 	Command string `gs:"bsrdone"`
 }
-
 type SearchResponseEntry struct {
 	ProfileID  uint32 `gs:"bsr"`
 	Nick       string `gs:"nick"`
