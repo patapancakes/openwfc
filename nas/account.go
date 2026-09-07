@@ -192,8 +192,18 @@ func acLogin(moduleName string, req LoginRequest) (LoginResponse, error) {
 
 	user, ok := db.GetUser(token.WFCID)
 	if !ok {
-		resp.ReturnCode = UserIDUnknown
-		return resp, fmt.Errorf("unknown userid")
+		// create account if it doesn't exist
+		// TODO: add config value for this
+		createResp, err := acAccountCreate(moduleName, AccountCreateRequest{NASRequest: req.NASRequest})
+		if err != nil {
+			return LoginResponse{NASResponse: createResp.NASResponse}, err
+		}
+
+		user, ok = db.GetUser(token.WFCID)
+		if !ok {
+			resp.ReturnCode = UserIDUnknown
+			return resp, fmt.Errorf("unknown userid")
+		}
 	}
 	if user.Banned {
 		resp.ReturnCode = UserBanned
