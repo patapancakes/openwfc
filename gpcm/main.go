@@ -54,8 +54,9 @@ var (
 	mutex               = deadlock.Mutex{}
 
 	handlers = map[string]gamespy.HandlerFunc{
-		"ka":    gamespy.Handle(KeepAlive),
-		"login": gamespy.Handle(login),
+		"ka":     gamespy.Handle(KeepAlive),
+		"login":  gamespy.Handle(login),
+		"logout": gamespy.Handle(logout),
 
 		"updatepro":  gamespy.Handle(updateProfile),
 		"status":     gamespy.Handle(status),

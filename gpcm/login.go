@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"math/rand"
 	"owfc/common"
+	"owfc/common/gamespy"
 	"owfc/logging"
 	"strconv"
 	"strings"
@@ -198,4 +199,14 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 		LoginTicket: state.LoginTicket,
 		ID:          req.ID,
 	}, nil
+}
+
+type LogoutRequest struct {
+	Command string `gs:"logout"`
+	SessKey int32  `gs:"sesskey"`
+}
+
+func logout(state *GameSpySession, req LogoutRequest) (gamespy.NoResponse, error) {
+	state.LoggedIn = false
+	return gamespy.NoResponse{}, nil
 }
