@@ -32,9 +32,9 @@ const (
 )
 
 var accountHandlers = map[string]AccountHandlerFunc{
-	"acctcreate": handleAccount(acAccountCreate),
-	"login":      handleAccount(acLogin),
-	"svcloc":     handleAccount(acServiceLocator),
+	"ACCTCREATE": handleAccount(acAccountCreate),
+	"LOGIN":      handleAccount(acLogin),
+	"SVCLOC":     handleAccount(acServiceLocator),
 }
 
 type AccountHandlerFunc func(moduleName string, req url.Values) (string, error)
@@ -60,7 +60,7 @@ func handleAuthAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		replyHTTPError(w, 400, "400 Bad Request")
 	}
 
-	handler, ok := accountHandlers[strings.ToLower(string(action))]
+	handler, ok := accountHandlers[string(action)]
 	if !ok {
 		logging.Error(moduleName, "Unknown action:", aurora.Cyan(string(action)))
 		replyHTTPError(w, 400, "400 Bad Request")
