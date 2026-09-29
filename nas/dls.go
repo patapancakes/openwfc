@@ -11,7 +11,6 @@ import (
 	"owfc/common"
 	"owfc/logging"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -75,9 +74,7 @@ func handleDownloadEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("X-DLS-Host", "dls1.nintendowifi.net")
 	w.Header().Set("Content-Length", strconv.Itoa(len(resp)))
-	for chunk := range slices.Chunk([]byte(resp), 1024*4) {
-		w.Write(chunk)
-	}
+	w.Write(resp)
 }
 
 type DownloadRequest struct {

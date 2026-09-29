@@ -355,11 +355,21 @@ func (c *consoleTLSConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *consoleTLSConn) Write(b []byte) (n int, err error) {
-	record := []byte{0x17, 0x03, 0x01}
-	record = binary.BigEndian.AppendUint16(record, uint16(len(b)))
+	var written int
+	for chunk := range slices.Chunk(b, 0x4000-5-md5.Size) {
+		record := []byte{0x17, 0x03, 0x00}
+		record = binary.BigEndian.AppendUint16(record, uint16(len(chunk)))
 
-	record, c.Seq = encryptTLS(c.MacFn, c.Cipher, b, c.Seq, record)
-	return c.Conn.Write(record)
+		record, c.Seq = encryptTLS(c.MacFn, c.Cipher, chunk, c.Seq, record)
+		_, err := c.Conn.Write(record)
+		if err != nil {
+			return written, err
+		}
+
+		written += len(chunk)
+	}
+
+	return written, nil
 }
 
 func handleWiiTLSHandshake(moduleName string, conn io.ReadWriter) (macFn macFunction, cipher *rc4.Cipher, clientCipher *rc4.Cipher, err error) {
