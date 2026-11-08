@@ -218,6 +218,18 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 		session.LastKeepAlive = time.Now().UTC().Unix()
 
 	case AvailableRequest:
+		// Expect a null terminated string
+		if len(buffer)-1 < 5 || buffer[len(buffer)-1] != 0 {
+			return
+		}
+
+		// Only respond if the game name provided in the packet is valid
+		gameName := string(buffer[5 : len(buffer)-1])
+		_, exists := common.GetGameInfoByName(gameName)
+		if !exists {
+			return
+		}
+
 		logging.Info("QR2", "Command:", aurora.Yellow("AVAILABLE"))
 		_, _ = conn.WriteTo(createResponseHeader(AvailableRequest, 0), &addr)
 
