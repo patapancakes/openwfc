@@ -32,9 +32,9 @@ const (
 )
 
 var accountHandlers = map[string]AccountHandlerFunc{
-	"ACCTCREATE": handleAccount(acAccountCreate),
-	"LOGIN":      handleAccount(acLogin),
-	"SVCLOC":     handleAccount(acServiceLocator),
+	"acctcreate": handleAccount(acAccountCreate),
+	"login":      handleAccount(acLogin),
+	"svcloc":     handleAccount(acServiceLocator),
 }
 
 type AccountHandlerFunc func(moduleName string, req url.Values) (string, error)

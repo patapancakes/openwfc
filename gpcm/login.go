@@ -201,6 +201,7 @@ type LogoutRequest struct {
 }
 
 func logout(state *GameSpySession, req LogoutRequest) (gamespy.NoResponse, error) {
-	state.LoggedIn = false
+	// TODO: CloseConnection cleanup doesn't work right if LoggedIn is false
+	//state.LoggedIn = false
 	return gamespy.NoResponse{}, nil
 }
