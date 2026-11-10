@@ -115,12 +115,6 @@ func login(state *GameSpySession, req LoginRequest) (LoginResponse, error) {
 		},
 	)
 
-	expectedUnitCode := common.GetExpectedUnitCode(state.GameName)
-	if (state.UnitCode != UnitCodeDS && state.UnitCode != UnitCodeWii) || (state.UnitCode != expectedUnitCode && expectedUnitCode != UnitCodeDSAndWii) {
-		logging.Error(state.ModuleName, "Incorrect unit code specified:", aurora.Cyan(state.UnitCode))
-		return LoginResponse{}, ErrLogin
-	}
-
 	nasChallenge := common.NullTerminatedString(authTokenObj.Challenge[:])
 
 	response := generateResponse(state.Challenge, nasChallenge, req.AuthToken, req.Challenge)

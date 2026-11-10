@@ -89,7 +89,6 @@ func handleServerListRequest(moduleName string, connIndex uint64, address string
 	gameName, index, err := popString(buffer, index)
 	if err != nil {
 		logging.Error(moduleName, "Invalid gameName")
-
 		return
 	}
 	challenge, index, err := popBytes(buffer, index, 8)
@@ -138,11 +137,6 @@ func handleServerListRequest(moduleName string, connIndex uint64, address string
 	if options&NoServerListOption == 0 {
 		for field := range strings.SplitSeq(fields, "\\") {
 			if len(field) == 0 || field == " " {
-				continue
-			}
-
-			// Skip private fields
-			if field == "publicip" || field == "publicport" || strings.HasPrefix(field, "localip") || field == "localport" {
 				continue
 			}
 

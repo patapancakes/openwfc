@@ -21,33 +21,6 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 		payload[values[i]] = values[i+1]
 	}
 
-	realIP, realPort := common.IPFormatToString(addr.String())
-
-	noIP := false
-	if ip, ok := payload["publicip"]; !ok || ip == "0" {
-		noIP = true
-	}
-
-	clientEndianness := common.GetExpectedUnitCode(payload["gamename"])
-	if !noIP && clientEndianness == ClientBigEndian {
-		if payload["publicip"] != realIP || payload["publicport"] != realPort {
-			// Client is mistaken about its public IP
-			logging.Error(moduleName, "Public IP mismatch")
-			return
-		}
-	} else if !noIP && clientEndianness == ClientLittleEndian {
-		realIPLE, realPortLE := common.IPFormatToStringLE(addr.String())
-		if payload["publicip"] != realIPLE || payload["publicport"] != realPortLE {
-			// Client is mistaken about its public IP
-			logging.Error(moduleName, "Public IP mismatch")
-			return
-		}
-	}
-	// Else it's a cross-compatible game and the endianness is ambiguous
-
-	payload["publicip"] = realIP
-	payload["publicport"] = realPort
-
 	lookupAddr := makeLookupAddr(addr.String())
 
 	statechanged, ok := payload["statechanged"]
@@ -65,12 +38,16 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 		return
 	}
 
+	// DS sends these endian-flipped, if kept as-is in server list then
+	// it never can verify its server is created. GS must have overwritten these...
+	payload["publicip"], payload["publicport"] = common.IPFormatToString(addr.String())
+
 	session, ok := setSessionData(moduleName, &addr, sessionId, payload)
 	if !ok {
 		return
 	}
 
-	if !session.Authenticated || noIP {
+	if !session.Authenticated {
 		sendChallenge(conn, addr, session, lookupAddr)
 	}
 }

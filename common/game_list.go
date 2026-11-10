@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/csv"
 	"strconv"
-	"strings"
 	"sync"
 
 	_ "embed"
@@ -164,26 +163,4 @@ func ReadGameList() {
 	}
 
 	readGameList = true
-}
-
-func GetExpectedUnitCode(gameName string) byte {
-	if strings.HasSuffix(gameName, "wii") || strings.HasSuffix(gameName, "wiiam") {
-		return 1
-	}
-
-	if gameName == "sneezieswiiw" || gameName == "wormswiiware" || gameName == "wormswiiwaream" {
-		return 1
-	}
-
-	// Games with weird other regions
-	if gameName == "jockracerna" || gameName == "jockracereu" || gameName == "sengo3wiijp" {
-		return 1
-	}
-
-	// Cross-platform games
-	if gameName == "mahjongkcds" || gameName == "puyopuyo7ds" || gameName == "puyopuyo20ds" {
-		return 0xff
-	}
-
-	return 0
 }
