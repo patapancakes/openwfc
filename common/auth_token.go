@@ -103,9 +103,8 @@ func (t *NASAuthToken) Unmarshal(data string) error {
 		return ErrTokenMagic
 	}
 
-	currentTime := time.Now().UTC()
 	issueTime := time.Unix(int64(t.IssueTime), 0)
-	if issueTime.Before(currentTime.Add(-10*time.Minute)) || issueTime.After(currentTime) {
+	if time.Since(issueTime) >= time.Minute*10 || issueTime.After(time.Now()) {
 		return ErrTokenExpired
 	}
 
@@ -160,9 +159,8 @@ func (t *GPCMLoginTicket) Unmarshal(ticket string) error {
 		return ErrTokenMagic
 	}
 
-	currentTime := time.Now().UTC()
 	issueTime := time.Unix(int64(t.IssueTime), 0)
-	if issueTime.Before(currentTime.Add(-48*time.Hour)) || issueTime.After(currentTime) {
+	if time.Since(issueTime) >= time.Hour*48 || issueTime.After(time.Now()) {
 		return ErrTokenExpired
 	}
 

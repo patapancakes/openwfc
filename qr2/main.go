@@ -30,11 +30,10 @@ const (
 )
 
 var (
-	db database.Connection
-
+	db         database.Connection
 	masterConn net.PacketConn
 	inShutdown atomic.Bool
-	waitGroup  = sync.WaitGroup{}
+	waitGroup  sync.WaitGroup
 )
 
 func StartServer(reload bool) {
@@ -81,7 +80,7 @@ func StartServer(reload bool) {
 
 			buf := make([]byte, 1024)
 			n, addr, err := conn.ReadFrom(buf)
-			if err != nil || n == 0 {
+			if err != nil || n < 5 {
 				continue
 			}
 
@@ -114,6 +113,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 	defer waitGroup.Done()
 
 	packetType := buffer[0]
+	sessionId := binary.BigEndian.Uint32(buffer[1:5])
 	moduleName := "QR2:" + addr.String()
 
 	var session *Session
@@ -121,120 +121,92 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 		mutex.Lock()
 
 		var ok bool
-		session, ok = sessions[makeLookupAddr(addr.String())]
+		session, ok = sessions[sessionId]
 		if !ok {
 			mutex.Unlock()
 			logging.Error(moduleName, "Cannot find session for this IP address")
 			return
 		}
 
-		session.SessionID = binary.BigEndian.Uint32(buffer[1:5])
-
+		session.SessionID = sessionId
 		mutex.Unlock()
 	}
 
 	switch packetType {
-	case QueryRequest:
-		logging.Info(moduleName, "Command:", aurora.Yellow("QUERY"))
-
 	case ChallengeRequest:
 		logging.Info(moduleName, "Command:", aurora.Yellow("CHALLENGE"))
 
 		mutex.Lock()
-		if session.Challenge != "" {
-			game, ok := common.GetGameInfoByName(session.Data["gamename"])
-			if !ok {
-				mutex.Unlock()
-				logging.Error(moduleName, "Unknown game:", aurora.Cyan(session.Data["gamename"]))
-				return
-			}
+		defer mutex.Unlock()
 
-			if len(buffer) < 5 {
-				mutex.Unlock()
-				logging.Error(moduleName, "Invalid packet size")
-				return
-			}
-
-			challenge := strings.TrimSuffix(string(buffer[5:]), "\x00")
-			if challenge != encode(encrypt([]byte(game.SecretKey), []byte(session.Challenge))) {
-				mutex.Unlock()
-				logging.Error(moduleName, "Invalid challenge")
-				return
-			}
-
-			session.Authenticated = true
-			mutex.Unlock()
-
-			var data strings.Builder
-			for k, v := range session.Data {
-				if k == "gamename" || k == "statechanged" {
-					continue
-				}
-
-				if data.Len() != 0 {
-					data.WriteString(", ")
-				}
-
-				fmt.Fprintf(&data, "%s: %s", k, v)
-			}
-
-			logging.Notice(moduleName, "Server created:", aurora.Cyan(game.Name), "/", aurora.Cyan(&data))
-			logging.Event("server_created", map[string]any{
-				"session_id": session.SessionID,
-				"data":       session.Data,
-				"ip_address": addr.String(),
-			})
-
-			_, _ = conn.WriteTo(createResponseHeader(ClientRegisteredReply, session.SessionID), &addr)
-		} else {
-			mutex.Unlock()
+		game, ok := common.GetGameInfoByName(session.Data["gamename"])
+		if !ok {
+			logging.Error(moduleName, "Unknown game:", aurora.Cyan(session.Data["gamename"]))
+			return
 		}
 
-	case EchoRequest:
-		logging.Info(moduleName, "Command:", aurora.Yellow("ECHO"))
+		challenge, err := common.GetString(buffer[5:])
+		if err != nil {
+			logging.Error(moduleName, "Invalid challenge")
+			return
+		}
+
+		if challenge != encode(encrypt([]byte(game.SecretKey), []byte(session.Challenge))) {
+			logging.Error(moduleName, "Invalid challenge")
+			return
+		}
+
+		session.Authenticated = true
+
+		var data strings.Builder
+		for k, v := range session.Data {
+			if k == "gamename" || k == "statechanged" {
+				continue
+			}
+
+			if data.Len() != 0 {
+				data.WriteString(", ")
+			}
+
+			fmt.Fprintf(&data, "%s: %s", k, v)
+		}
+
+		logging.Notice(moduleName, "Server created:", aurora.Cyan(game.Name), "/", aurora.Cyan(&data))
+		logging.Event("server_created", map[string]any{
+			"session_id": session.SessionID,
+			"data":       session.Data,
+			"ip_address": addr.String(),
+		})
+
+		conn.WriteTo(createResponseHeader(ClientRegisteredReply, session.SessionID), &addr)
 
 	case HeartbeatRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("HEARTBEAT"))
-		heartbeat(moduleName, conn, addr, buffer)
-
-	case AddErrorRequest:
-		logging.Info(moduleName, "Command:", aurora.Yellow("ADDERROR"))
-
-	case EchoResponseRequest:
-		logging.Info(moduleName, "Command:", aurora.Yellow("ECHO_RESPONSE"))
-
-	case ClientMessageRequest:
-		logging.Info(moduleName, "Command:", aurora.Yellow("CLIENT_MESSAGE"))
+		heartbeat(moduleName, conn, addr, sessionId, buffer[5:])
 
 	case ClientMessageAckRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("CLIENT_MESSAGE_ACK"))
 
-		session.messageAckWaker.Assert()
-
 	case KeepAliveRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("KEEPALIVE"))
-		_, _ = conn.WriteTo(createResponseHeader(KeepAliveRequest, 0), &addr)
+		session.LastKeepAlive = time.Now()
 
-		session.LastKeepAlive = time.Now().UTC().Unix()
+		conn.WriteTo(createResponseHeader(KeepAliveRequest, 0), &addr)
 
 	case AvailableRequest:
-		// Expect a null terminated string
-		if len(buffer)-1 < 5 || buffer[len(buffer)-1] != 0 {
+		gameName, err := common.GetString(buffer[5:])
+		if err != nil {
 			return
 		}
 
 		// Only respond if the game name provided in the packet is valid
-		gameName := string(buffer[5 : len(buffer)-1])
 		_, exists := common.GetGameInfoByName(gameName)
 		if !exists {
 			return
 		}
 
 		logging.Info("QR2", "Command:", aurora.Yellow("AVAILABLE"))
-		_, _ = conn.WriteTo(createResponseHeader(AvailableRequest, 0), &addr)
-
-	case ClientRegisteredReply:
-		logging.Info(moduleName, "Command:", aurora.Yellow("CLIENT_REGISTERED"))
+		conn.WriteTo(createResponseHeader(AvailableRequest, 0), &addr)
 
 	default:
 		logging.Error(moduleName, "Unknown command:", aurora.Yellow(buffer[0]))
