@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"owfc/common"
@@ -103,6 +104,9 @@ type AccountCreateRequest struct {
 }
 type AccountCreateResponse struct {
 	NASResponse
+
+	// wii only
+	UserID uint64 `nas:"userid,omitzero"`
 }
 
 func acAccountCreate(moduleName string, req AccountCreateRequest) (AccountCreateResponse, error) {
@@ -140,6 +144,12 @@ func acAccountCreate(moduleName string, req AccountCreateRequest) (AccountCreate
 			return resp, fmt.Errorf("invalid passwd")
 		}
 	} else {
+		// skip if called from login
+		if user.ID == 0 {
+			user.ID = rand.Uint64()
+			resp.UserID = user.ID
+		}
+
 		user.SerialNumber = req.SerialNumber
 		if len(user.SerialNumber) != 11 {
 			resp.ReturnCode = MissingParam
