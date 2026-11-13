@@ -3,13 +3,10 @@ package gpcm
 import (
 	"owfc/common/gamespy"
 	"owfc/logging"
-	"regexp"
 	"strings"
 
 	"github.com/logrusorgru/aurora/v3"
 )
-
-var isDWCMatchCommand = regexp.MustCompile(`^GPCM\d+vMAT`).MatchString
 
 type BuddyMessageRequest struct {
 	Command int    `gs:"bm"`
@@ -34,21 +31,22 @@ func buddyMessage(state *GameSpySession, req BuddyMessageRequest) (gamespy.NoRes
 		return gamespy.NoResponse{}, ErrMessageNotFriends
 	}
 
-	// DWCi_GetGPBuddyAdditionalMsg copies everything between / into a 16 byte buffer
-	// regardless of actual size
-	if isDWCMatchCommand(req.Message) {
-		for i, segment := range strings.Split(req.Message, "/") {
-			// first segment is header and message type
-			if i == 0 {
+	// DWC-related fixes
+	if msg, isDWC := strings.CutPrefix(req.Message, "GPCM"); isDWC {
+		for i, segment := range strings.Split(msg, "/") {
+			// DWCi_GPRecvBuddyMessageCallback
+			// everything between GPCM and v is copied into a 12 byte buffer
+			if i == 0 && strings.Index(segment, "v") <= 2 {
 				continue
 			}
 
-			// segments are uint32 strings, skip if in bounds (10 characters)
-			if len(segment) <= 10 {
+			// DWCi_GetGPBuddyAdditionalMsg
+			// segments are copied into a 16 byte buffer
+			if len(segment) < 10 {
 				continue
 			}
 
-			logging.Error(state.ModuleName, "Invalid DWC match command parameter")
+			logging.Error(state.ModuleName, "Invalid DWC match command")
 			return gamespy.NoResponse{}, ErrMessage
 		}
 	}
