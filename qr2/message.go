@@ -56,5 +56,5 @@ func SendClientMessage(senderIP string, dest netip.AddrPort, message []byte) {
 
 	payload = append(payload, message...)
 
-	masterConn.WriteTo(payload, &receiver.Addr)
+	masterConn.WriteTo(payload, receiver.Addr)
 }

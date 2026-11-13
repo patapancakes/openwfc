@@ -20,7 +20,7 @@ const (
 
 type Session struct {
 	SessionID     uint32
-	Addr          net.UDPAddr
+	Addr          *net.UDPAddr
 	Challenge     string
 	Authenticated bool
 	LastKeepAlive time.Time

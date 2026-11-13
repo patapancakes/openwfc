@@ -11,7 +11,7 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
-func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, sessionId uint32, buffer []byte) {
+func heartbeat(moduleName string, conn net.PacketConn, addr *net.UDPAddr, sessionId uint32, buffer []byte) {
 	values := strings.Split(string(buffer), "\x00")
 
 	payload := map[string]string{}
@@ -71,5 +71,5 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, session
 	response = append(response, []byte(session.Challenge)...)
 	response = append(response, 0)
 
-	conn.WriteTo(response, &session.Addr)
+	conn.WriteTo(response, session.Addr)
 }

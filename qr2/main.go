@@ -86,7 +86,7 @@ func StartServer(reload bool) {
 
 			waitGroup.Add(1)
 
-			go handleConnection(conn, *addr.(*net.UDPAddr), buf[:n])
+			go handleConnection(conn, addr.(*net.UDPAddr), buf[:n])
 		}
 	})
 }
@@ -109,7 +109,7 @@ func Shutdown() {
 	logging.Notice("QR2", "Saved", aurora.Cyan(len(sessions)), "sessions")
 }
 
-func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
+func handleConnection(conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
 	defer waitGroup.Done()
 
 	packetType := buffer[0]
@@ -178,7 +178,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 			"ip_address": addr.String(),
 		})
 
-		conn.WriteTo(createResponseHeader(ClientRegisteredReply, session.SessionID), &addr)
+		conn.WriteTo(createResponseHeader(ClientRegisteredReply, session.SessionID), addr)
 
 	case HeartbeatRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("HEARTBEAT"))
@@ -191,7 +191,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 		// logging.Info(moduleName, "Command:", aurora.Yellow("KEEPALIVE"))
 		session.LastKeepAlive = time.Now()
 
-		conn.WriteTo(createResponseHeader(KeepAliveRequest, 0), &addr)
+		conn.WriteTo(createResponseHeader(KeepAliveRequest, 0), addr)
 
 	case AvailableRequest:
 		gameName, err := common.GetString(buffer[5:])
@@ -206,7 +206,7 @@ func handleConnection(conn net.PacketConn, addr net.UDPAddr, buffer []byte) {
 		}
 
 		logging.Info("QR2", "Command:", aurora.Yellow("AVAILABLE"))
-		conn.WriteTo(createResponseHeader(AvailableRequest, 0), &addr)
+		conn.WriteTo(createResponseHeader(AvailableRequest, 0), addr)
 
 	default:
 		logging.Error(moduleName, "Unknown command:", aurora.Yellow(buffer[0]))
