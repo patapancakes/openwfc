@@ -57,8 +57,9 @@ func search(_ *gpcm.GameSpySession, req SearchRequest) (SearchResponse, error) {
 	filter := map[string]string{}
 	var logInfo strings.Builder
 	for field, v := range reflect.ValueOf(req).Fields() {
+		// TODO: implement other filters
 		key := field.Tag.Get("gs")
-		if !slices.Contains([]string{"nick", "uniquenick", "email", "firstname", "lastname" /*"icquin" "skip"*/}, key) {
+		if !slices.Contains([]string{ /*"nick", "uniquenick", "email",*/ "firstname", "lastname" /*"icquin" "skip"*/}, key) {
 			continue
 		}
 
@@ -73,7 +74,7 @@ func search(_ *gpcm.GameSpySession, req SearchRequest) (SearchResponse, error) {
 	if logInfo.String() == "" {
 		logging.Info(moduleName, "Search with no fields")
 	} else {
-		logging.Info(moduleName, "Search"+logInfo.String())
+		logging.Info(moduleName, "Search", logInfo.String())
 	}
 
 	ids, err := db.SearchProfile(filter)

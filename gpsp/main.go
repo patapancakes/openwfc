@@ -56,7 +56,7 @@ func HandlePacket(index uint64, data []byte) {
 			replyError(moduleName, index, gpcm.ErrParse)
 		}
 
-		resp, err := handler(nil, message)
+		resp, err := handler(&gpcm.GameSpySession{}, message)
 		if err != nil {
 			gpErr, ok := errors.AsType[gpcm.GPError](err)
 			if ok {
