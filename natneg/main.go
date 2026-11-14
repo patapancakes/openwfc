@@ -59,35 +59,35 @@ const (
 	NATMappingMixed             = 0x04
 )
 
-type NATNEGSession struct {
-	Open    bool
-	Version byte
-	Cookie  uint32
-	mutex   sync.RWMutex
-	Clients map[byte]*NATNEGClient
+var Magic = []byte{0xfd, 0xfc, 0x1e, 0x66, 0x6a, 0xb2}
+
+type Session struct {
+	Open        bool
+	Version     byte
+	Cookie      uint32
+	mutex       sync.RWMutex
+	Connecting  bool
+	Host, Guest *Peer
 }
 
-type NATNEGClient struct {
-	Cookie          uint32
-	Index           byte
-	ConnectingIndex byte
-	ConnectAck      bool
-	Result          map[byte]byte
-	NegotiateIP     string
-	LocalIP         string
-	ServerIP        string
-	GameName        string
+type Peer struct {
+	Cookie        uint32
+	Host          bool
+	ConnectAck    bool
+	Result        int
+	NegotiateAddr *net.UDPAddr
+	ServerAddr    *net.UDPAddr
 }
 
 var (
 	db database.Connection
 
-	sessions   = map[uint32]*NATNEGSession{}
-	mutex      = sync.RWMutex{}
+	sessions   = map[uint32]*Session{}
+	mutex      sync.RWMutex
 	natnegConn net.PacketConn
 
 	inShutdown atomic.Bool
-	waitGroup  = sync.WaitGroup{}
+	waitGroup  sync.WaitGroup
 )
 
 func StartServer(reload bool) {
@@ -137,11 +137,8 @@ func StartServer(reload bool) {
 	}
 
 	waitGroup.Go(func() {
-
 		// Close the listener when the application closes.
-		defer func() {
-			_ = conn.Close()
-		}()
+		defer conn.Close()
 		logging.Notice("NATNEG", "Listening on", aurora.BrightCyan(address))
 
 		for {
@@ -149,15 +146,18 @@ func StartServer(reload bool) {
 				return
 			}
 
-			buffer := make([]byte, 1024)
-			size, addr, err := conn.ReadFrom(buffer)
-			if err != nil {
+			buf := make([]byte, 1024)
+			n, addr, err := conn.ReadFrom(buf)
+			if err != nil || n < 12 {
 				continue
 			}
 
-			waitGroup.Add(1)
+			msg, hasPrefix := bytes.CutPrefix(buf[:n], Magic)
+			if !hasPrefix {
+				continue
+			}
 
-			go handleConnection(conn, addr, buffer[:size])
+			waitGroup.Go(func() { handleConnection(conn, addr.(*net.UDPAddr), msg) })
 		}
 	})
 }
@@ -187,40 +187,28 @@ func Shutdown() {
 	logging.Notice("NATNEG", "Saved", aurora.Cyan(len(sessions)), "sessions")
 }
 
-func handleConnection(conn net.PacketConn, addr net.Addr, buffer []byte) {
-	defer waitGroup.Done()
-
-	// Validate the packet magic
-	if len(buffer) < 12 || !bytes.HasPrefix(buffer, []byte{0xfd, 0xfc, 0x1e, 0x66, 0x6a, 0xb2}) {
-		logging.Error("NATNEG:"+addr.String(), "Invalid packet header")
-		return
-	}
-
+func handleConnection(conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
 	// Parse the NATNEG header
 	// fd fc 1e 66 6a b2 - Packet Magic
 	// xx                - Version
 	// xx                - Packet Type / Command
 	// xx xx xx xx       - Cookie
 
-	version := buffer[6]
-	command := buffer[7]
-	cookie := binary.BigEndian.Uint32(buffer[8:12])
+	version := buffer[0]
+	command := buffer[1]
+	cookie := binary.BigEndian.Uint32(buffer[2:])
 
 	moduleName := "NATNEG:" + fmt.Sprintf("%08x/", cookie) + addr.String()
 
-	var session *NATNEGSession
-
 	mutex.Lock()
-	var exists bool
-	session, exists = sessions[cookie]
+	session, exists := sessions[cookie]
 	if !exists {
 		logging.Info(moduleName, "Creating session")
-		session = &NATNEGSession{
+		session = &Session{
 			Open:    true,
 			Version: version,
 			Cookie:  cookie,
 			mutex:   sync.RWMutex{},
-			Clients: map[byte]*NATNEGClient{},
 		}
 		sessions[cookie] = session
 
@@ -231,11 +219,6 @@ func handleConnection(conn net.PacketConn, addr net.Addr, buffer []byte) {
 	}
 	mutex.Unlock()
 
-	if session.Version != version {
-		logging.Error(moduleName, "Version mismatch")
-		return
-	}
-
 	session.mutex.Lock()
 	defer session.mutex.Unlock()
 
@@ -245,13 +228,7 @@ func handleConnection(conn net.PacketConn, addr net.Addr, buffer []byte) {
 
 	case NNInitRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("NN_INIT"))
-		session.handleInit(conn, addr, buffer[12:], moduleName, version)
-
-	case NNInitReply:
-		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_INITACK"))
-
-	case NNErtTestRequest:
-		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_ERTTEST"))
+		session.handleInit(conn, addr, buffer[6:], moduleName, version)
 
 	case NNErtTestReply:
 		logging.Info(moduleName, "Command:", aurora.Yellow("NN_ERTACK"))
@@ -259,12 +236,9 @@ func handleConnection(conn net.PacketConn, addr net.Addr, buffer []byte) {
 	case NNStateUpdate:
 		logging.Info(moduleName, "Command:", aurora.Yellow("NN_STATEUPDATE"))
 
-	case NNConnectRequest:
-		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_CONNECT"))
-
 	case NNConnectReply:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("NN_CONNECT_ACK"))
-		session.handleConnectReply(conn, addr, buffer[12:], moduleName, version)
+		session.handleConnectReply(conn, addr, buffer[6:], moduleName, version)
 
 	case NNConnectPing:
 		logging.Info(moduleName, "Command:", aurora.Yellow("NN_CONNECT_PING"))
@@ -272,37 +246,25 @@ func handleConnection(conn net.PacketConn, addr net.Addr, buffer []byte) {
 	case NNBackupTestRequest:
 		logging.Info(moduleName, "Command:", aurora.Yellow("NN_BACKUP_TEST"))
 
-	case NNBackupTestReply:
-		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_BACKUP_ACK"))
-
 	case NNAddressCheckRequest:
 		//logging.Info(moduleName, "Command:", aurora.Yellow("NN_ADDRESS_CHECK"))
-		session.handleAddressCheck(conn, addr, buffer[12:], moduleName, version)
-
-	case NNAddressCheckReply:
-		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_ADDRESS_REPLY"))
+		session.handleAddressCheck(conn, addr, buffer[6:], moduleName, version)
 
 	case NNNatifyRequest:
 		//logging.Info(moduleName, "Command:", aurora.Yellow("NN_NATIFY_REQUEST"))
-		session.handleNatify(conn, addr, buffer[12:], moduleName, version)
+		session.handleNatify(conn, addr, buffer[6:], moduleName, version)
 
 	case NNReportRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("NN_REPORT"))
-		session.handleReport(conn, addr, buffer[12:], moduleName, version)
-
-	case NNReportReply:
-		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_REPORT_ACK"))
+		session.handleReport(conn, addr, buffer[6:], moduleName, version)
 
 	case NNPreInitRequest:
 		logging.Info(moduleName, "Command:", aurora.Yellow("NN_PREINIT"))
-		session.handlePreinit(conn, addr, buffer[12:], moduleName, version)
-
-	case NNPreInitReply:
-		logging.Warn(moduleName, "Received server command:", aurora.Yellow("NN_PREINIT_ACK"))
+		session.handlePreinit(conn, addr, buffer[6:], moduleName, version)
 	}
 }
 
-func closeSession(moduleName string, session *NATNEGSession) {
+func closeSession(moduleName string, session *Session) {
 	mutex.Lock()
 	if inShutdown.Load() {
 		mutex.Unlock()
@@ -317,56 +279,33 @@ func closeSession(moduleName string, session *NATNEGSession) {
 	defer session.mutex.Unlock()
 
 	// Disconnect each client
-	for _, client := range session.Clients {
-		if client.ConnectingIndex == client.Index {
+	for _, client := range []*Peer{session.Host, session.Guest} {
+		if client == nil {
 			continue
 		}
 
-		logging.Info(moduleName, "Disconnecting client", aurora.Cyan(client.Index))
+		index := 0
+		if client.Host {
+			index = 1
+		}
+
+		logging.Info(moduleName, "Disconnecting client", aurora.Cyan(index))
 		// Send report ack, which will cause the client to cancel
 		reportAck := createPacketHeader(session.Version, NNReportReply, session.Cookie)
-		reportAck = append(reportAck, 0x00, client.Index, 0x00)
+		reportAck = append(reportAck, 0x00, byte(index), 0x00)
 		reportAck = append(reportAck, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00)
 
-		addr, err := net.ResolveUDPAddr("udp", client.NegotiateIP)
-		common.ShouldNotError(err)
-
-		_, _ = natnegConn.WriteTo(reportAck, addr)
+		natnegConn.WriteTo(reportAck, client.NegotiateAddr)
 	}
 
 	logging.Info(moduleName, "Deleted session")
 }
 
-func getPortTypeName(portType byte) string {
-	switch portType {
-	default:
-		return fmt.Sprintf("Unknown (0x%02x)", portType)
-
-	case PortTypeGamePort:
-		return "GamePort"
-
-	case PortTypeNATNEG1:
-		return "NATNEG1"
-
-	case PortTypeNATNEG2:
-		return "NATNEG2"
-
-	case PortTypeNATNEG3:
-		return "NATNEG3"
-	}
-}
-
-var _ = common.MaybeUnused(getPortTypeName)
-
-func (client *NATNEGClient) isMapped() bool {
-	if client.NegotiateIP == "" || client.ServerIP == "" {
-		return false
-	}
-
-	return true
+func (client *Peer) isMapped() bool {
+	return client.NegotiateAddr != nil && client.ServerAddr != nil
 }
 
 func createPacketHeader(version byte, command byte, cookie uint32) []byte {
-	header := []byte{0xfd, 0xfc, 0x1e, 0x66, 0x6a, 0xb2, version, command}
+	header := append(Magic, version, command)
 	return binary.BigEndian.AppendUint32(header, cookie)
 }

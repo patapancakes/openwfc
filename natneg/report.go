@@ -8,7 +8,7 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
-func (session *NATNEGSession) handleReport(conn net.PacketConn, addr net.Addr, buffer []byte, _moduleName string, version byte) {
+func (session *Session) handleReport(conn net.PacketConn, addr *net.UDPAddr, buffer []byte, _moduleName string, version byte) {
 	if len(buffer) < 2 {
 		logging.Error(_moduleName, "Invalid packet size")
 		return
@@ -17,7 +17,7 @@ func (session *NATNEGSession) handleReport(conn net.PacketConn, addr net.Addr, b
 	response := createPacketHeader(version, NNReportReply, session.Cookie)
 	response = append(response, buffer[:9]...)
 	response[14] = 0
-	_, _ = conn.WriteTo(response, addr)
+	conn.WriteTo(response, addr)
 
 	// portType := buffer[0]
 	clientIndex := buffer[1]
@@ -29,31 +29,32 @@ func (session *NATNEGSession) handleReport(conn net.PacketConn, addr net.Addr, b
 	moduleName := "NATNEG:" + fmt.Sprintf("%08x/", session.Cookie) + addr.String()
 	logging.Notice(moduleName, "Report from", aurora.BrightCyan(clientIndex), "result:", aurora.Cyan(result))
 
-	if client, exists := session.Clients[clientIndex]; exists {
-		client.Result[client.ConnectingIndex] = result
-		connecting := session.Clients[client.ConnectingIndex]
-		client.ConnectingIndex = clientIndex
-		client.ConnectAck = false
-
-		if otherResult, hasResult := connecting.Result[clientIndex]; hasResult {
-			if otherResult != 1 {
-				result = otherResult
-			}
-
-			eventType := "natneg_succeeded"
-			if result != 1 {
-				eventType = "natneg_failed"
-			}
-
-			logging.Event(
-				eventType,
-				map[string]any{
-					"peers": []string{client.ServerIP, connecting.ServerIP},
-				},
-			)
-		}
+	client := session.Guest
+	peer := session.Host
+	if clientIndex == 1 {
+		client = session.Host
+		peer = session.Guest
+	}
+	if client == nil {
+		return
 	}
 
-	// Send remaining requests
-	session.sendConnectRequests(moduleName)
+	client.Result = int(result)
+	client.ConnectAck = false
+
+	if peer == nil {
+		return
+	}
+
+	eventType := "natneg_failed"
+	if client.Result == 1 || peer.Result == 1 {
+		eventType = "natneg_succeeded"
+	}
+
+	logging.Event(
+		eventType,
+		map[string]any{
+			"peers": []string{client.ServerAddr.String(), peer.ServerAddr.String()},
+		},
+	)
 }

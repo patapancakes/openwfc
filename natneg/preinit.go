@@ -11,21 +11,10 @@ const (
 	NNPreInitReady             = 0x02
 )
 
-// typedef struct _PreinitPacket
-// {
-//     unsigned char clientindex;
-//     unsigned char state;
-//     int clientID;
-// } PreinitPacket;
-
-func (session *NATNEGSession) handlePreinit(conn net.PacketConn, addr net.Addr, buffer []byte, moduleName string, version byte) {
+func (session *Session) handlePreinit(conn net.PacketConn, addr *net.UDPAddr, buffer []byte, moduleName string, version byte) {
 	if len(buffer) < 6 {
 		logging.Error(moduleName, "Invalid packet size")
 		return
-	}
-
-	if len(buffer) > 6 {
-		logging.Warn(moduleName, "Stray", len(buffer)-6, "bytes after packet")
 	}
 
 	// clientIndex := buffer[0]
@@ -38,6 +27,6 @@ func (session *NATNEGSession) handlePreinit(conn net.PacketConn, addr net.Addr, 
 
 	packet := createPacketHeader(version, NNPreInitReply, session.Cookie)
 	buffer[1] = NNPreInitReady
-	packet = append(packet, buffer[:6]...)
-	_, _ = conn.WriteTo(packet, addr)
+	packet = append(packet, buffer...)
+	conn.WriteTo(packet, addr)
 }
