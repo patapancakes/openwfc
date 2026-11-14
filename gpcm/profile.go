@@ -37,7 +37,7 @@ func getProfile(state *GameSpySession, req GetProfileRequest) (GetProfileRespons
 		return GetProfileResponse{}, ErrNotLoggedIn
 	}
 
-	logging.Info(state.ModuleName, "Looking up the profile of", aurora.Cyan(req.ProfileID).String())
+	logging.Info(state.ModuleName, "Looking up the profile of", aurora.Cyan(req.ProfileID))
 
 	var profile database.Profile
 	var locstring string

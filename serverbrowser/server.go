@@ -198,7 +198,7 @@ func handleServerListRequest(moduleName string, connIndex uint64, address string
 		if !exists {
 			// Fall back to local port if public port doesn't exist
 			if port, exists = server["localport"]; !exists {
-				logging.Error(moduleName, "Server exists without port (publicip =", aurora.Cyan(publicip).String()+")")
+				logging.Error(moduleName, "Server exists without port (publicip =", aurora.Cyan(publicip), ")")
 				continue
 			}
 		}

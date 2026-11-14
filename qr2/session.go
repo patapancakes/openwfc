@@ -70,7 +70,7 @@ func GetSessionServers() []map[string]string {
 
 	// Remove unreachable sessions
 	for _, id := range unreachable {
-		logging.Notice("QR2", "Removing unreachable session", aurora.BrightCyan(sessions[id].Addr.String()))
+		logging.Notice("QR2", "Removing unreachable session", aurora.BrightCyan(sessions[id].Addr))
 		removeSession(id)
 	}
 
