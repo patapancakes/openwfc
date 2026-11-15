@@ -68,9 +68,7 @@ func StartServer(reload bool) {
 
 	waitGroup.Go(func() {
 		// Close the listener when the application closes.
-		defer func() {
-			_ = conn.Close()
-		}()
+		defer conn.Close()
 		logging.Notice("QR2", "Listening on", aurora.BrightCyan(address))
 
 		for {
@@ -84,9 +82,7 @@ func StartServer(reload bool) {
 				continue
 			}
 
-			waitGroup.Add(1)
-
-			go handleConnection(conn, addr.(*net.UDPAddr), buf[:n])
+			waitGroup.Go(func() { handleConnection(conn, addr.(*net.UDPAddr), buf[:n]) })
 		}
 	})
 }
@@ -110,10 +106,8 @@ func Shutdown() {
 }
 
 func handleConnection(conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
-	defer waitGroup.Done()
-
 	packetType := buffer[0]
-	sessionId := binary.BigEndian.Uint32(buffer[1:5])
+	sessionId := binary.BigEndian.Uint32(buffer[1:])
 	moduleName := "QR2:" + addr.String()
 
 	var session *Session

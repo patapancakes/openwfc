@@ -531,7 +531,7 @@ func getInputFields(moduleName string, request StorageRequestCommon, table *Sake
 			Value: value,
 		}
 		if result := table.CheckValidField(field.Name, sakeField); result != ResultSuccess {
-			logging.Error(moduleName, "Invalid value for field", aurora.Cyan(field.Name).String()+":", aurora.Cyan(value))
+			logging.Error(moduleName, "Invalid value for field", aurora.Cyan(field.Name), ":", aurora.Cyan(value))
 			return nil, result
 		}
 		var result Result
