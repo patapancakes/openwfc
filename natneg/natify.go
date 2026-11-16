@@ -1,12 +1,35 @@
 package natneg
 
 import (
+	"encoding/binary"
 	"net"
 	"owfc/common"
 	"owfc/logging"
 )
 
-func (session *NATNEGSession) handleNatify(conn net.PacketConn, addr net.Addr, buffer []byte, moduleName string, version byte) {
+func (s *Session) handleAddressCheck(moduleName string, conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
+	if len(buffer) < 1 {
+		logging.Error(moduleName, "Invalid packet size")
+		return
+	}
+
+	portType := buffer[0]
+	if portType > 0x03 {
+		logging.Error(moduleName, "Invalid port type")
+		return
+	}
+
+	response := createPacketHeader(s.Version, NNAddressCheckReply, s.Cookie)
+	response = append(response, portType)
+	response = append(response, 0x00)                                     // clientIndex
+	response = append(response, 0x00)                                     // useGamePort
+	response = append(response, addr.IP[:]...)                            // client ip
+	response = binary.BigEndian.AppendUint16(response, uint16(addr.Port)) // client port
+
+	conn.WriteTo(response, addr)
+}
+
+func (s *Session) handleNatify(moduleName string, conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
 	if len(buffer) < 1 {
 		logging.Error(moduleName, "Invalid packet size")
 		return
@@ -34,9 +57,9 @@ func (session *NATNEGSession) handleNatify(conn net.PacketConn, addr net.Addr, b
 		defer conn.Close()
 	}
 
-	response := createPacketHeader(version, NNErtTestRequest, session.Cookie)
+	response := createPacketHeader(s.Version, NNErtTestRequest, s.Cookie)
 	response = append(response, portType)
 	response = append(response, make([]byte, 8)...)
 
-	_, _ = conn.WriteTo(response, addr)
+	conn.WriteTo(response, addr)
 }

@@ -7,7 +7,6 @@ import (
 	"owfc/common"
 	"owfc/database"
 	"owfc/logging"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -107,87 +106,54 @@ func Shutdown() {
 
 func handleConnection(conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
 	packetType := buffer[0]
-	sessionId := binary.BigEndian.Uint32(buffer[1:])
+	cookie := binary.BigEndian.Uint32(buffer[1:])
 	moduleName := "QR2:" + addr.String()
 
 	var session *Session
-	if packetType != HeartbeatRequest && packetType != AvailableRequest {
-		mutex.Lock()
+	if packetType != AvailableRequest {
+		var exists bool
 
-		var ok bool
-		session, ok = sessions[sessionId]
-		if !ok {
+		mutex.RLock()
+		session, exists = sessions[cookie]
+		mutex.RUnlock()
+		if !exists {
+			logging.Info(moduleName, "Creating session", aurora.Cyan(cookie))
+
+			session = &Session{
+				Cookie:        cookie,
+				Addr:          addr,
+				Challenge:     fmt.Sprintf("%s00%X%04X", common.RandomString(6), []byte(addr.IP), addr.Port),
+				LastKeepAlive: time.Now(),
+			}
+
+			mutex.Lock()
+			sessions[cookie] = session
 			mutex.Unlock()
-			logging.Error(moduleName, "Cannot find session for this IP address")
-			return
 		}
-
-		session.SessionID = sessionId
-		mutex.Unlock()
 	}
 
 	switch packetType {
 	case ChallengeRequest:
 		logging.Info(moduleName, "Command:", aurora.Yellow("CHALLENGE"))
-
-		mutex.Lock()
-		defer mutex.Unlock()
-
-		game, ok := common.GetGameInfoByName(session.Data["gamename"])
-		if !ok {
-			logging.Error(moduleName, "Unknown game:", aurora.Cyan(session.Data["gamename"]))
-			return
-		}
-
-		challenge, err := common.GetString(buffer[5:])
-		if err != nil {
-			logging.Error(moduleName, "Invalid challenge")
-			return
-		}
-
-		if challenge != encode(encrypt([]byte(game.SecretKey), []byte(session.Challenge))) {
-			logging.Error(moduleName, "Invalid challenge")
-			return
-		}
-
-		session.Authenticated = true
-
-		var data strings.Builder
-		for k, v := range session.Data {
-			if k == "gamename" || k == "statechanged" {
-				continue
-			}
-
-			if data.Len() != 0 {
-				data.WriteString(", ")
-			}
-
-			fmt.Fprintf(&data, "%s: %s", k, v)
-		}
-
-		logging.Notice(moduleName, "Server created:", aurora.Cyan(game.Name), "/", aurora.Cyan(&data))
-		logging.Event("server_created", map[string]any{
-			"session_id": session.SessionID,
-			"data":       session.Data,
-			"ip_address": addr.String(),
-		})
-
-		conn.WriteTo(createResponseHeader(ClientRegisteredReply, session.SessionID), addr)
+		session.handleChallenge(moduleName, conn, buffer[5:])
 
 	case HeartbeatRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("HEARTBEAT"))
-		heartbeat(moduleName, conn, addr, sessionId, buffer[5:])
+		session.handleHeartbeat(moduleName, conn, buffer[5:])
 
 	case ClientMessageAckRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("CLIENT_MESSAGE_ACK"))
+		// TODO: verify these
 
 	case KeepAliveRequest:
 		// logging.Info(moduleName, "Command:", aurora.Yellow("KEEPALIVE"))
 		session.LastKeepAlive = time.Now()
 
-		conn.WriteTo(createResponseHeader(KeepAliveRequest, 0), addr)
+		conn.WriteTo(createResponseHeader(KeepAliveRequest, cookie), addr)
 
 	case AvailableRequest:
+		logging.Info("QR2", "Command:", aurora.Yellow("AVAILABLE"))
+
 		gameName, err := common.GetString(buffer[5:])
 		if err != nil {
 			return
@@ -199,14 +165,13 @@ func handleConnection(conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
 			return
 		}
 
-		logging.Info("QR2", "Command:", aurora.Yellow("AVAILABLE"))
-		conn.WriteTo(createResponseHeader(AvailableRequest, 0), addr)
+		conn.WriteTo(createResponseHeader(AvailableRequest, cookie), addr)
 
 	default:
 		logging.Error(moduleName, "Unknown command:", aurora.Yellow(buffer[0]))
 	}
 }
 
-func createResponseHeader(command byte, sessionId uint32) []byte {
-	return binary.BigEndian.AppendUint32([]byte{0xfe, 0xfd, command}, sessionId)
+func createResponseHeader(command byte, cookie uint32) []byte {
+	return binary.BigEndian.AppendUint32([]byte{0xfe, 0xfd, command}, cookie)
 }

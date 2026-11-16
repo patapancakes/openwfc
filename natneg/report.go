@@ -8,16 +8,16 @@ import (
 	"github.com/logrusorgru/aurora/v3"
 )
 
-func (session *NATNEGSession) handleReport(conn net.PacketConn, addr net.Addr, buffer []byte, _moduleName string, version byte) {
+func (s *Session) handleReport(moduleName string, conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
 	if len(buffer) < 2 {
-		logging.Error(_moduleName, "Invalid packet size")
+		logging.Error(moduleName, "Invalid packet size")
 		return
 	}
 
-	response := createPacketHeader(version, NNReportReply, session.Cookie)
+	response := createPacketHeader(s.Version, NNReportReply, s.Cookie)
 	response = append(response, buffer[:9]...)
 	response[14] = 0
-	_, _ = conn.WriteTo(response, addr)
+	conn.WriteTo(response, addr)
 
 	// portType := buffer[0]
 	clientIndex := buffer[1]
@@ -26,34 +26,42 @@ func (session *NATNEGSession) handleReport(conn net.PacketConn, addr net.Addr, b
 	// mappingScheme := buffer[7]
 	// gameName, err := common.GetString(buffer[11:])
 
-	moduleName := "NATNEG:" + fmt.Sprintf("%08x/", session.Cookie) + addr.String()
+	moduleName = "NATNEG:" + fmt.Sprintf("%08x/", s.Cookie) + addr.String()
 	logging.Notice(moduleName, "Report from", aurora.BrightCyan(clientIndex), "result:", aurora.Cyan(result))
 
-	if client, exists := session.Clients[clientIndex]; exists {
-		client.Result[client.ConnectingIndex] = result
-		connecting := session.Clients[client.ConnectingIndex]
-		client.ConnectingIndex = clientIndex
-		client.ConnectAck = false
-
-		if otherResult, hasResult := connecting.Result[clientIndex]; hasResult {
-			if otherResult != 1 {
-				result = otherResult
-			}
-
-			eventType := "natneg_succeeded"
-			if result != 1 {
-				eventType = "natneg_failed"
-			}
-
-			logging.Event(
-				eventType,
-				map[string]any{
-					"peers": []string{client.ServerIP, connecting.ServerIP},
-				},
-			)
-		}
+	client := s.Guest
+	peer := s.Host
+	if clientIndex == 1 {
+		client = s.Host
+		peer = s.Guest
+	}
+	if client == nil {
+		return
 	}
 
-	// Send remaining requests
-	session.sendConnectRequests(moduleName)
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	client.Result = int(result)
+
+	if peer == nil {
+		return
+	}
+
+	if client.Result == -1 || peer.Result == -1 {
+		// haven't gotten both reports yet
+		return
+	}
+
+	eventType := "natneg_failed"
+	if client.Result == 1 && peer.Result == 1 {
+		eventType = "natneg_succeeded"
+	}
+
+	logging.Event(
+		eventType,
+		map[string]any{
+			"peers": []string{client.GameAddr.String(), peer.GameAddr.String()},
+		},
+	)
 }

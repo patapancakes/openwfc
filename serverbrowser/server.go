@@ -302,5 +302,5 @@ func handleSendMessageRequest(moduleName string, connIndex uint64, address strin
 
 	logging.Notice(moduleName, "Sending message to", aurora.Cyan(addr))
 
-	go qr2.SendClientMessage(address, addr, buffer[9:])
+	go qr2.SendClientMessage(addr, buffer[9:])
 }

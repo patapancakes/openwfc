@@ -11,21 +11,10 @@ const (
 	NNPreInitReady             = 0x02
 )
 
-// typedef struct _PreinitPacket
-// {
-//     unsigned char clientindex;
-//     unsigned char state;
-//     int clientID;
-// } PreinitPacket;
-
-func (session *NATNEGSession) handlePreinit(conn net.PacketConn, addr net.Addr, buffer []byte, moduleName string, version byte) {
+func (s *Session) handlePreinit(moduleName string, conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
 	if len(buffer) < 6 {
 		logging.Error(moduleName, "Invalid packet size")
 		return
-	}
-
-	if len(buffer) > 6 {
-		logging.Warn(moduleName, "Stray", len(buffer)-6, "bytes after packet")
 	}
 
 	// clientIndex := buffer[0]
@@ -36,8 +25,8 @@ func (session *NATNEGSession) handlePreinit(conn net.PacketConn, addr net.Addr, 
 	// NATNEG internally calls it "ACE queuing", but the games don't seem to take advantage of any potential "queuing" functionality.
 	// Hopefully just returning "ready" will cause the games to continue with NATNEG as normal.
 
-	packet := createPacketHeader(version, NNPreInitReply, session.Cookie)
+	packet := createPacketHeader(s.Version, NNPreInitReply, s.Cookie)
 	buffer[1] = NNPreInitReady
-	packet = append(packet, buffer[:6]...)
-	_, _ = conn.WriteTo(packet, addr)
+	packet = append(packet, buffer...)
+	conn.WriteTo(packet, addr)
 }

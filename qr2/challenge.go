@@ -2,7 +2,57 @@ package qr2
 
 import (
 	"encoding/base64"
+	"fmt"
+	"net"
+	"owfc/common"
+	"owfc/logging"
+	"strings"
+
+	"github.com/logrusorgru/aurora/v3"
 )
+
+func (s *Session) handleChallenge(moduleName string, conn net.PacketConn, buffer []byte) {
+	game, ok := common.GetGameInfoByName(s.Data["gamename"])
+	if !ok {
+		logging.Error(moduleName, "Unknown game:", aurora.Cyan(s.Data["gamename"]))
+		return
+	}
+
+	challenge, err := common.GetString(buffer)
+	if err != nil {
+		logging.Error(moduleName, "Invalid challenge")
+		return
+	}
+
+	if challenge != encode(encrypt([]byte(game.SecretKey), []byte(s.Challenge))) {
+		logging.Error(moduleName, "Invalid challenge")
+		return
+	}
+
+	s.Authenticated = true
+
+	var data strings.Builder
+	for k, v := range s.Data {
+		if k == "gamename" || k == "statechanged" {
+			continue
+		}
+
+		if data.Len() != 0 {
+			data.WriteString(", ")
+		}
+
+		fmt.Fprintf(&data, "%s: %s", k, v)
+	}
+
+	logging.Notice(moduleName, "Server created:", aurora.Cyan(game.Name), "/", aurora.Cyan(&data))
+	logging.Event("server_created", map[string]any{
+		"cookie":     s.Cookie,
+		"data":       s.Data,
+		"ip_address": s.Addr.String(),
+	})
+
+	conn.WriteTo(createResponseHeader(ClientRegisteredReply, s.Cookie), s.Addr)
+}
 
 func encode(data []byte) string {
 	padded := make([]byte, ((len(data)+2)/3)*3)

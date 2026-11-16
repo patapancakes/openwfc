@@ -3,85 +3,78 @@ package natneg
 import (
 	"encoding/binary"
 	"net"
-	"owfc/common"
 	"owfc/logging"
 	"time"
-
-	"github.com/logrusorgru/aurora/v3"
 )
 
-func (session *NATNEGSession) sendConnectRequests(moduleName string) {
-	for id, sender := range session.Clients {
-		if !sender.isMapped() || sender.ConnectingIndex != id {
-			continue
-		}
-
-		for destID, destination := range session.Clients {
-			if id == destID || !destination.isMapped() || destination.ConnectingIndex != destID {
-				continue
-			}
-
-			if _, hasResult := destination.Result[id]; hasResult {
-				continue
-			}
-
-			logging.Notice(moduleName, "Exchange connect requests between", aurora.BrightCyan(id), "and", aurora.BrightCyan(destID))
-			sender.ConnectingIndex = destID
-			sender.ConnectAck = false
-			destination.ConnectingIndex = id
-			destination.ConnectAck = false
-
-			go func(session *NATNEGSession, sender *NATNEGClient, destination *NATNEGClient) {
-				for {
-					if !session.Open {
-						return
-					}
-
-					check := false
-
-					if !destination.ConnectAck && destination.ConnectingIndex == sender.Index {
-						check = true
-						sender.sendConnectRequestPacket(natnegConn, destination, session.Version)
-					}
-
-					if !sender.ConnectAck && sender.ConnectingIndex == destination.Index {
-						check = true
-						destination.sendConnectRequestPacket(natnegConn, sender, session.Version)
-					}
-
-					if !check {
-						return
-					}
-
-					time.Sleep(500 * time.Millisecond)
-				}
-			}(session, sender, destination)
-		}
+func (s *Session) sendConnectRequests(moduleName string) {
+	if s.Host == nil || !s.Host.isMapped() {
+		return
 	}
+	if s.Guest == nil || !s.Guest.isMapped() {
+		return
+	}
+
+	s.mutex.Lock()
+	if s.Connecting {
+		s.mutex.Unlock()
+		return
+	}
+	s.Connecting = true
+	s.mutex.Unlock()
+
+	s.Host.ConnectAck = false
+	s.Guest.ConnectAck = false
+
+	logging.Notice(moduleName, "Exchange connect requests")
+
+	go func() {
+		for range time.NewTicker(time.Millisecond * 500).C {
+			if !s.Open || s.Guest.Result != -1 || s.Host.Result != -1 {
+				break
+			}
+
+			var retry bool
+			if !s.Host.ConnectAck {
+				retry = true
+				s.Guest.sendConnectRequestPacket(natnegConn, s.Host, s.Version)
+			}
+			if !s.Guest.ConnectAck {
+				retry = true
+				s.Host.sendConnectRequestPacket(natnegConn, s.Guest, s.Version)
+			}
+			if !retry {
+				break
+			}
+		}
+
+		s.Connecting = false
+	}()
 }
 
-func (client *NATNEGClient) sendConnectRequestPacket(conn net.PacketConn, destination *NATNEGClient, version byte) {
+func (client *Peer) sendConnectRequestPacket(conn net.PacketConn, destination *Peer, version byte) {
 	connectHeader := createPacketHeader(version, NNConnectRequest, destination.Cookie)
-	connectHeader = append(connectHeader, common.IPFormatBytes(client.ServerIP)...)
-	_, port := common.IPFormatToInt(client.ServerIP)
-	connectHeader = binary.BigEndian.AppendUint16(connectHeader, port)
+	connectHeader = append(connectHeader, client.GameAddr.IP...)
+	connectHeader = binary.BigEndian.AppendUint16(connectHeader, uint16(client.GameAddr.Port))
 	// Two bytes: "gotyourdata" and "finished"
 	connectHeader = append(connectHeader, 0x42, 0x00)
 
-	destIPAddr, err := net.ResolveUDPAddr("udp", destination.NegotiateIP)
-	common.ShouldNotError(err)
-	_, _ = conn.WriteTo(connectHeader, destIPAddr)
+	conn.WriteTo(connectHeader, destination.NegotiateAddr)
 }
 
-func (session *NATNEGSession) handleConnectReply(conn net.PacketConn, addr net.Addr, buffer []byte, moduleName string, version byte) {
-	common.MaybeUnused(conn, addr, buffer, moduleName, version)
-
+func (s *Session) handleConnectReply(moduleName string, conn net.PacketConn, addr *net.UDPAddr, buffer []byte) {
 	// portType := buffer[0]
 	clientIndex := buffer[1]
 	// useGamePort := buffer[2]
-	// localIPBytes := buffer[3:7]
+	// localIP, ok := netip.AddrFromSlice(buffer[3:7])
 
-	if client, exists := session.Clients[clientIndex]; exists {
-		client.ConnectAck = true
+	client := s.Guest
+	if clientIndex == 1 {
+		client = s.Host
 	}
+	if client == nil {
+		return
+	}
+
+	client.ConnectAck = true
 }
