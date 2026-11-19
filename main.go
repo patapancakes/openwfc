@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"net/rpc"
 	"os"
 	"os/exec"
@@ -66,7 +67,7 @@ func main() {
 type RPCPacket struct {
 	Server  string
 	Index   uint64
-	Address string
+	Address netip.AddrPort
 	Data    []byte
 }
 
@@ -463,24 +464,27 @@ func frontendListen(server serverInfo) {
 			continue
 		}
 
+		var addr netip.AddrPort
 		if server.protocol == "tcp" {
 			err := conn.(*net.TCPConn).SetKeepAlive(true)
 			if err != nil {
-				logging.Warn("FRONTEND", "Unable to set keepalive", err.Error())
+				logging.Warn("FRONTEND", "Unable to set keepalive", err)
 			}
+
+			addr = conn.RemoteAddr().(*net.TCPAddr).AddrPort()
+		} else { // assume UDP
+			addr = conn.RemoteAddr().(*net.UDPAddr).AddrPort()
 		}
 
 		count++
 
-		go handleConnection(server, conn, count)
+		go handleConnection(server, count, conn, addr)
 	}
 }
 
 // handleConnection forwards packets between the frontend and backend
-func handleConnection(server serverInfo, conn net.Conn, index uint64) {
-	defer func() {
-		_ = conn.Close()
-	}()
+func handleConnection(server serverInfo, index uint64, conn net.Conn, addr netip.AddrPort) {
+	defer conn.Close()
 
 	rpcMutex.Lock()
 	rpcBusyCount.Add(1)
@@ -488,7 +492,7 @@ func handleConnection(server serverInfo, conn net.Conn, index uint64) {
 	connections[server.rpcName][index] = pConn
 	rpcMutex.Unlock()
 
-	err := rpcClient.Call("RPCPacket.NewConnection", RPCPacket{Server: server.rpcName, Index: index, Address: conn.RemoteAddr().String(), Data: []byte{}}, nil)
+	err := rpcClient.Call("RPCPacket.NewConnection", RPCPacket{Server: server.rpcName, Index: index, Address: addr}, nil)
 
 	rpcBusyCount.Done()
 
@@ -517,7 +521,7 @@ func handleConnection(server serverInfo, conn net.Conn, index uint64) {
 		rpcMutex.Unlock()
 
 		// Forward the packet to the backend
-		err = rpcClient.Call("RPCPacket.HandlePacket", RPCPacket{Server: server.rpcName, Index: index, Address: conn.RemoteAddr().String(), Data: buffer[:n]}, nil)
+		err = rpcClient.Call("RPCPacket.HandlePacket", RPCPacket{Server: server.rpcName, Index: index, Address: addr, Data: buffer[:n]}, nil)
 
 		rpcBusyCount.Done()
 
@@ -540,7 +544,7 @@ func handleConnection(server serverInfo, conn net.Conn, index uint64) {
 	delete(connections[server.rpcName], index)
 	rpcMutex.Unlock()
 
-	err = rpcClient.Call("RPCPacket.CloseConnection", RPCPacket{Server: server.rpcName, Index: index, Address: conn.RemoteAddr().String(), Data: []byte{}}, nil)
+	err = rpcClient.Call("RPCPacket.CloseConnection", RPCPacket{Server: server.rpcName, Index: index, Address: addr}, nil)
 
 	rpcBusyCount.Done()
 

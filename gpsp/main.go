@@ -2,6 +2,7 @@ package gpsp
 
 import (
 	"errors"
+	"net/netip"
 	"owfc/common"
 	"owfc/common/gamespy"
 	"owfc/database"
@@ -35,7 +36,7 @@ func Shutdown() {
 	db.Close()
 }
 
-func NewConnection(index uint64, address string) {
+func NewConnection(index uint64, address netip.AddrPort) {
 }
 
 func CloseConnection(index uint64) {

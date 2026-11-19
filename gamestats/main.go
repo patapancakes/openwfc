@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"errors"
+	"net/netip"
 	"os"
 	"owfc/common"
 	"owfc/common/gamespy"
@@ -20,7 +21,7 @@ var ServerName = "gamestats"
 
 type GameStatsSession struct {
 	ConnIndex  uint64
-	RemoteAddr string
+	RemoteAddr netip.AddrPort
 	ModuleName string
 	Challenge  string
 
@@ -118,11 +119,11 @@ func Shutdown() {
 	logging.Notice("GSTATS", "Saved", aurora.Cyan(len(sessionsByConnIndex)), "sessions")
 }
 
-func NewConnection(index uint64, address string) {
+func NewConnection(index uint64, address netip.AddrPort) {
 	session := &GameStatsSession{
 		ConnIndex:  index,
 		RemoteAddr: address,
-		ModuleName: "GSTATS:" + address,
+		ModuleName: "GSTATS:" + address.String(),
 		Challenge:  common.RandomString(10),
 	}
 

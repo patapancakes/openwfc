@@ -3,6 +3,7 @@ package serverbrowser
 import (
 	"encoding/binary"
 	"encoding/gob"
+	"net/netip"
 	"os"
 	"owfc/common"
 	"owfc/logging"
@@ -68,7 +69,7 @@ func Shutdown() {
 	logging.Notice("SB", "Saved", aurora.Cyan(len(connBuffers)), "connections")
 }
 
-func NewConnection(index uint64, address string) {
+func NewConnection(index uint64, address netip.AddrPort) {
 }
 
 func CloseConnection(index uint64) {
@@ -77,8 +78,8 @@ func CloseConnection(index uint64) {
 	mutex.Unlock()
 }
 
-func HandlePacket(index uint64, data []byte, address string) {
-	moduleName := "SB:" + address
+func HandlePacket(index uint64, data []byte, address netip.AddrPort) {
+	moduleName := "SB:" + address.String()
 
 	mutex.RLock()
 	buffer := connBuffers[index]

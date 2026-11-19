@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"errors"
+	"net/netip"
 	"os"
 	"owfc/common"
 	"owfc/common/gamespy"
@@ -19,7 +20,7 @@ const ServerName = "gpcm"
 
 type GameSpySession struct {
 	ConnIndex   uint64
-	RemoteAddr  string
+	RemoteAddr  netip.AddrPort
 	Profile     database.Profile
 	ModuleName  string
 	LoggedIn    bool
@@ -140,12 +141,11 @@ type ChallengeRequest struct {
 	ID        int    `gs:"id"`
 }
 
-func NewConnection(index uint64, address string) {
+func NewConnection(index uint64, address netip.AddrPort) {
 	session := &GameSpySession{
 		ConnIndex:  index,
 		RemoteAddr: address,
-		Profile:    database.Profile{},
-		ModuleName: "GPCM:" + address,
+		ModuleName: "GPCM:" + address.String(),
 		Challenge:  common.RandomString(10),
 	}
 

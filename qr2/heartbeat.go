@@ -36,7 +36,7 @@ func (s *Session) handleHeartbeat(moduleName string, conn net.PacketConn, buffer
 
 	// DS sends these endian-flipped, if kept as-is in server list then
 	// it never can verify its server is created. GS must have overwritten these...
-	payload["publicip"], payload["publicport"] = common.IPFormatToString(s.Addr.String())
+	payload["publicip"], payload["publicport"] = common.IPFormatToString(s.Addr.AddrPort())
 
 	s.Data = payload
 
